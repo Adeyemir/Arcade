@@ -6,10 +6,10 @@ import "@nomicfoundation/hardhat-toolbox";
 const config: HardhatUserConfig = {
   solidity: "0.8.20",
   networks: {
-    /*arc_testnet: {
+    arc_testnet: {
       url: "https://rpc.testnet.arc.network", // Replace with the actual RPC URL
-      accounts: ["YOUR_PRIVATE_KEY"] // Replace with a private key for deployment
-    }*/
+      accounts: [process.env.ARC_PRIVATE_KEY as string] // Use environment variable for private key
+    }
   }
 };
 
