@@ -1,0 +1,35 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_20-3ba0e5ee5b1e2f542fbf39f87135e1e89c953d67",
+  "solcVersion": "0.8.20",
+  "solcLongVersion": "0.8.20+commit.a1b79de6",
+  "userSourceNameMap": {
+    "contracts/ArcadeTest.sol": "project/contracts/ArcadeTest.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "shanghai",
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode",
+            "evm.deployedBytecode",
+            "evm.methodIdentifiers",
+            "metadata"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/ArcadeTest.sol": {
+        "content": "\n// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract ArcadeTest {\n    string public message;\n\n    constructor() {\n        message = \"Hello, Arcade!\";\n    }\n\n    function setMessage(string memory _message) public {\n        message = _message;\n    }\n}\n"
+      }
+    }
+  }
+}
