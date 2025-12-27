@@ -14,22 +14,24 @@ export function MainNav({
     >
       <Link
         href="/"
-        className="text-sm font-medium transition-colors hover:text-primary"
+        className="text-sm font-medium text-slate-700 transition-colors hover:text-blue-600"
       >
         Marketplace
       </Link>
       <Link
         href="/list-agent"
-        className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+        className="text-sm font-medium text-slate-700 transition-colors hover:text-blue-600"
       >
         List Agent
       </Link>
-      <Link
-        href="/docs"
-        className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+      <a
+        href="https://faucet.circle.com/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-sm font-medium text-slate-700 transition-colors hover:text-blue-600"
       >
-        Docs/Help
-      </Link>
+        Faucet
+      </a>
     </nav>
   )
 }

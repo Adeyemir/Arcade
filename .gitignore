@@ -1,41 +1,68 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# Build outputs
+.next/
+out/
+build/
+dist/
 
-# testing
-/coverage
+# Environment files (SENSITIVE - DO NOT COMMIT)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# next.js
-/.next/
-/out/
+# Hardhat
+cache/
+artifacts/
+typechain-types/
+hardhat-cache/
 
-# production
-/build
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
-# misc
+# OS
 .DS_Store
-*.pem
+Thumbs.db
+*.log
 
-# debug
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
+lerna-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# Testing
+coverage/
 
-# vercel
+# Misc
+*.pem
 .vercel
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# Deployment docs (may contain sensitive info)
+*_DEBUG.md
+*_FIX*.md
+*_GUIDE.md
+
+# Test and debug scripts (may contain test keys)
+scripts/test-*.ts
+scripts/test-*.js
+scripts/fund-*.ts
+scripts/rental-with-*.ts
+scripts/simple-*.cjs
+scripts/check-*.ts
+scripts/verify-*.ts
+scripts/deploy-rental-manager-fixed.ts
+
+# Debug and deployment documentation (may contain addresses/sensitive info)
+*_VERIFICATION.md
+*_SUMMARY.md
+*DEPLOYMENT*.md

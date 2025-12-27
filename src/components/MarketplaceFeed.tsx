@@ -1,0 +1,206 @@
+"use client";
+
+import { useState, useMemo } from "react";
+import { AgentCard } from "@/components/AgentCard";
+import { Button } from "@/components/ui/button";
+
+interface Agent {
+  agentId: number;
+  title: string;
+  description: string;
+  pricePerHour: string;
+  uptime?: string;
+  category?: string;
+  owner: string;
+  isVerified?: boolean;
+  imageUrl?: string;
+}
+
+interface MarketplaceFeedProps {
+  agents: Agent[];
+}
+
+export function MarketplaceFeed({ agents }: MarketplaceFeedProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 100]);
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
+
+  // Get unique categories from all agents
+  const uniqueCategories = useMemo(() => {
+    const categories = new Set<string>(['All']);
+    agents?.forEach(agent => {
+      if (agent.category && agent.category.trim() !== '') {
+        categories.add(agent.category);
+      }
+    });
+    return Array.from(categories).sort((a, b) => {
+      if (a === 'All') return -1;
+      if (b === 'All') return 1;
+      return a.localeCompare(b);
+    });
+  }, [agents]);
+
+  // Filter agents based on criteria
+  const filteredAgents = agents.filter((agent) => {
+    const matchesSearch =
+      agent.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      agent.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory =
+      selectedCategory === "All" || agent.category === selectedCategory;
+    const matchesPrice =
+      parseInt(agent.pricePerHour) >= priceRange[0] &&
+      parseInt(agent.pricePerHour) <= priceRange[1];
+    const matchesVerified = !verifiedOnly || agent.isVerified;
+
+    return matchesSearch && matchesCategory && matchesPrice && matchesVerified;
+  });
+
+  return (
+    <main className="min-h-screen bg-slate-50">
+      {/* Hero Section */}
+      <section className="bg-white border-b border-slate-200">
+        <div className="container max-w-screen-2xl mx-auto px-6 py-16">
+          <div className="max-w-3xl mx-auto text-center">
+            <h1 className="text-5xl font-semibold text-slate-900 mb-4">
+              Rent Autonomous Intelligence
+            </h1>
+            <p className="text-lg text-slate-600 mb-8">
+              Secure, trustless AI agents powered by Arc Blockchain
+            </p>
+            {/* Search Bar */}
+            <div className="relative max-w-2xl mx-auto">
+              <input
+                type="text"
+                placeholder="Search agents by name or capability..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full px-6 py-4 text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent shadow-sm"
+              />
+              <svg
+                className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Main Content: Filters + Grid */}
+      <section className="container max-w-screen-2xl mx-auto px-6 py-8">
+        <div className="flex gap-8">
+          {/* Filter Sidebar */}
+          <aside className="w-64 flex-shrink-0">
+            <div className="bg-white border border-slate-200 rounded-xl p-6 sticky top-20">
+              <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-4">
+                Filters
+              </h3>
+
+              {/* Category Filter */}
+              <div className="mb-6">
+                <label className="text-sm font-medium text-slate-700 mb-2 block">
+                  Category
+                </label>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {uniqueCategories.map(category => (
+                    <option key={category} value={category} className="text-slate-900">
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Price Range */}
+              <div className="mb-6">
+                <label className="text-sm font-medium text-slate-700 mb-2 block">
+                  Price (ARC/hr)
+                </label>
+                <div className="space-y-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={priceRange[1]}
+                    onChange={(e) =>
+                      setPriceRange([priceRange[0], parseInt(e.target.value)])
+                    }
+                    className="w-full accent-blue-600"
+                  />
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>0 ARC</span>
+                    <span>{priceRange[1]} ARC</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Verified Only Toggle */}
+              <div className="mb-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={verifiedOnly}
+                    onChange={(e) => setVerifiedOnly(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 bg-white border-slate-300 rounded focus:ring-blue-600 accent-blue-600"
+                  />
+                  <span className="text-sm text-slate-700">
+                    Verified Developers Only
+                  </span>
+                </label>
+              </div>
+
+              {/* Results Count */}
+              <div className="pt-4 border-t border-slate-200">
+                <p className="text-xs text-slate-500">
+                  Showing {filteredAgents.length} agent
+                  {filteredAgents.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+            </div>
+          </aside>
+
+          {/* Agent Grid */}
+          <div className="flex-1">
+            {filteredAgents.length === 0 ? (
+              <div className="text-center py-16">
+                <p className="text-slate-500 text-lg">
+                  No agents found matching your criteria
+                </p>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setSelectedCategory("All");
+                    setPriceRange([0, 100]);
+                    setVerifiedOnly(false);
+                  }}
+                  className="mt-4"
+                >
+                  Clear Filters
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredAgents.map((agent) => (
+                  <AgentCard key={agent.agentId} {...agent} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
