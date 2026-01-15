@@ -25,6 +25,7 @@ export function MarketplaceFeed({ agents }: MarketplaceFeedProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 100]);
   const [verifiedOnly, setVerifiedOnly] = useState(false);
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
 
   // Get unique categories from all agents
   const uniqueCategories = useMemo(() => {
@@ -97,9 +98,32 @@ export function MarketplaceFeed({ agents }: MarketplaceFeedProps) {
 
       {/* Main Content: Filters + Grid */}
       <section className="container max-w-screen-2xl mx-auto px-6 py-8">
+        {/* Mobile Filters Button */}
+        <div className="lg:hidden mb-4">
+          <Button
+            onClick={() => setIsMobileFilterOpen(true)}
+            className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-900 border border-slate-300 px-4 py-2 rounded-lg shadow-sm"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+              />
+            </svg>
+            Filters
+          </Button>
+        </div>
+
         <div className="flex gap-8">
-          {/* Filter Sidebar */}
-          <aside className="w-64 flex-shrink-0">
+          {/* Filter Sidebar - Desktop */}
+          <aside className="hidden lg:block w-64 flex-shrink-0">
             <div className="bg-white border border-slate-200 rounded-xl p-6 sticky top-20">
               <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-4">
                 Filters
@@ -201,6 +225,122 @@ export function MarketplaceFeed({ agents }: MarketplaceFeedProps) {
           </div>
         </div>
       </section>
+
+      {/* Mobile Filter Drawer */}
+      {isMobileFilterOpen && (
+        <>
+          {/* Overlay */}
+          <div
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+            onClick={() => setIsMobileFilterOpen(false)}
+          />
+
+          {/* Drawer */}
+          <aside className="fixed left-0 top-0 bottom-0 w-80 bg-white z-50 lg:hidden overflow-y-auto">
+            <div className="p-6">
+              {/* Header with Close Button */}
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Filters
+                </h3>
+                <button
+                  onClick={() => setIsMobileFilterOpen(false)}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                  aria-label="Close filters"
+                >
+                  <svg
+                    className="w-6 h-6 text-slate-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Category Filter */}
+              <div className="mb-6">
+                <label className="text-sm font-medium text-slate-700 mb-2 block">
+                  Category
+                </label>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {uniqueCategories.map(category => (
+                    <option key={category} value={category} className="text-slate-900">
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Price Range */}
+              <div className="mb-6">
+                <label className="text-sm font-medium text-slate-700 mb-2 block">
+                  Price (ARC/hr)
+                </label>
+                <div className="space-y-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={priceRange[1]}
+                    onChange={(e) =>
+                      setPriceRange([priceRange[0], parseInt(e.target.value)])
+                    }
+                    className="w-full accent-blue-600"
+                  />
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>0 ARC</span>
+                    <span>{priceRange[1]} ARC</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Verified Only Toggle */}
+              <div className="mb-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={verifiedOnly}
+                    onChange={(e) => setVerifiedOnly(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 bg-white border-slate-300 rounded focus:ring-blue-600 accent-blue-600"
+                  />
+                  <span className="text-sm text-slate-700">
+                    Verified Developers Only
+                  </span>
+                </label>
+              </div>
+
+              {/* Results Count */}
+              <div className="pt-4 border-t border-slate-200">
+                <p className="text-xs text-slate-500">
+                  Showing {filteredAgents.length} agent
+                  {filteredAgents.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+
+              {/* Apply Button */}
+              <div className="mt-6">
+                <Button
+                  onClick={() => setIsMobileFilterOpen(false)}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg"
+                >
+                  Apply Filters
+                </Button>
+              </div>
+            </div>
+          </aside>
+        </>
+      )}
     </main>
   );
 }
