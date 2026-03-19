@@ -102,7 +102,7 @@ export function AgentManageModal({
               <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-medium text-emerald-900">
-                  {activeAction === "price" ? "Price Updated!" : "Agent Unlisted!"}
+                  {activeAction === "price" ? "Price Updated" : "Agent Unlisted"}
                 </p>
                 <p className="text-xs text-emerald-700 mt-1">
                   Transaction confirmed. Refreshing...

@@ -41,7 +41,7 @@ export function useRentAgent() {
 
       return result;
     } catch (err: any) {
-      console.error("\n❌ writeContractAsync FAILED!");
+      console.error("\nwriteContractAsync FAILED!");
       console.error("  - Error type:", err.name);
       console.error("  - Error message:", err.message);
 

@@ -62,7 +62,7 @@ export function DelistAgentModal({
 
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
           <p className="text-sm text-yellow-800 font-medium mb-2">
-            ⚠️ Warning: This action is permanent
+            Warning: This action is permanent
           </p>
           <p className="text-sm text-yellow-700">
             Once delisted, <strong>{agentName}</strong> cannot be relisted.

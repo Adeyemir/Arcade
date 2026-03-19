@@ -6,10 +6,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useListAgent } from "@/lib/blockchain/hooks/useArcadeRegistry";
+import { useRegisterERC8004 } from "@/lib/blockchain/hooks/useERC8004Identity";
 
 export default function ListAgentPage() {
   const { address, isConnected } = useAccount();
-  const { listAgent, isPending, isConfirming, isSuccess, error: contractError, hash } = useListAgent();
+  const { listAgent, isSuccess, error: contractError, hash } = useListAgent();
+  const { register: registerERC8004 } = useRegisterERC8004();
   const queryClient = useQueryClient();
   const router = useRouter();
 
@@ -26,6 +28,7 @@ export default function ListAgentPage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [showCustomCategory, setShowCustomCategory] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [step, setStep] = useState<"idle" | "uploading" | "registering" | "listing" | "done">("idle");
 
   // Handle successful transaction
   useEffect(() => {
@@ -69,74 +72,85 @@ export default function ListAgentPage() {
 
     if (!isConnected) {
       setError("Please connect your wallet to list an agent");
-      console.error("❌ Wallet not connected");
+      console.error("Wallet not connected");
       return;
     }
 
     // Validation
     if (!formData.name || !formData.description || !formData.category || !formData.pricePerHour) {
       setError("Please fill in all required fields");
-      console.error("❌ Missing required fields");
+      console.error("Missing required fields");
       return;
     }
 
     if (parseFloat(formData.pricePerHour) <= 0) {
       setError("Price must be greater than 0");
-      console.error("❌ Invalid price");
+      console.error("Invalid price");
       return;
     }
 
     if (formData.description.length < 50) {
       setError("Description must be at least 50 characters");
-      console.error("❌ Description too short:", formData.description.length, "chars");
+      console.error("Description too short:", formData.description.length, "chars");
       return;
     }
 
     if (formData.category.trim() === '') {
       setError("Please select or enter a category");
-      console.error("❌ Category is empty");
+      console.error("Category is empty");
       return;
     }
 
     try {
       let imageUrl = '';
 
-      // Upload image to IPFS if selected
+      // Step 1: Upload image to IPFS
+      setStep("uploading");
       if (imageFile) {
         setUploadingImage(true);
         imageUrl = await uploadToIPFS(imageFile);
         setUploadingImage(false);
       }
 
-      // Optional: Create extended metadata for IPFS (future feature)
-      // For now, we store name, description, and category directly on-chain
-      const extendedMetadata = formData.dockerImage || formData.apiEndpoint
-        ? JSON.stringify({
-            dockerImage: formData.dockerImage,
-            apiEndpoint: formData.apiEndpoint,
-            timestamp: Date.now(),
-          })
-        : "";
+      // Build initial ERC-8004 metadata JSON and upload to IPFS
+      const baseMetadata = {
+        name: formData.name,
+        description: formData.description,
+        image: imageUrl,
+        category: formData.category,
+        capabilities: [formData.category.toLowerCase()],
+        ...(formData.dockerImage && { dockerImage: formData.dockerImage }),
+        ...(formData.apiEndpoint && { apiEndpoint: formData.apiEndpoint }),
+      };
+      const initialMetadataURI = await uploadJSONToIPFS(baseMetadata);
 
+      // Step 2: Register on Arc ERC-8004 IdentityRegistry
+      setStep("registering");
+      const erc8004AgentId = await registerERC8004(initialMetadataURI);
 
+      // Re-upload metadata with erc8004AgentId embedded so agent page can read it
+      const finalMetadataURI = await uploadJSONToIPFS({
+        ...baseMetadata,
+        erc8004AgentId: erc8004AgentId.toString(),
+      });
 
-      // Call the contract with on-chain metadata
+      // Step 3: List on Arcade marketplace
+      setStep("listing");
       await listAgent(
         formData.name,
         formData.description,
         formData.category,
         formData.pricePerHour,
-        extendedMetadata, // Optional IPFS hash or additional metadata
-        imageUrl // IPFS image URL
+        finalMetadataURI,
+        imageUrl
       );
 
-
+      setStep("done");
     } catch (err: any) {
-      console.error("❌ Failed to list agent");
-      console.error("Error:", err);
-      console.error("Error message:", err?.message || "Unknown");
+      console.error("Failed to list agent:", err?.message || err);
       setError(err instanceof Error ? err.message : "Failed to list agent");
       setUploadingImage(false);
+      setStep("idle");
     }
   };
 
@@ -187,7 +201,7 @@ export default function ListAgentPage() {
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('❌ Pinata upload failed:', errorData);
+      console.error('Pinata upload failed:', errorData);
       throw new Error('Failed to upload image to IPFS');
     }
 
@@ -197,6 +211,13 @@ export default function ListAgentPage() {
     const ipfsUrl = `https://ipfs.io/ipfs/${data.IpfsHash}`;
 
     return ipfsUrl;
+  };
+
+  // Upload a JSON object to IPFS — converts to file and reuses the working pinFileToIPFS path
+  const uploadJSONToIPFS = async (json: object): Promise<string> => {
+    const blob = new Blob([JSON.stringify(json)], { type: 'application/json' });
+    const file = new File([blob], 'metadata.json', { type: 'application/json' });
+    return uploadToIPFS(file);
   };
 
   return (
@@ -222,29 +243,31 @@ export default function ListAgentPage() {
           </div>
         )}
 
-        {/* Transaction Pending */}
-        {isPending && (
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-900 font-medium">
-              Waiting for wallet confirmation...
-            </p>
-          </div>
-        )}
-
-        {/* Transaction Confirming */}
-        {isConfirming && (
+        {/* Step indicators */}
+        {step === "uploading" && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-center gap-2">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-900"></div>
-              <p className="text-sm text-blue-900 font-medium">
-                Transaction confirming on Arc Blockchain...
-              </p>
+              <p className="text-sm text-blue-900 font-medium">Uploading metadata to IPFS...</p>
             </div>
-            {hash && (
-              <p className="text-xs text-blue-700 mt-2">
-                Transaction: {hash.slice(0, 10)}...{hash.slice(-8)}
-              </p>
-            )}
+          </div>
+        )}
+
+        {step === "registering" && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-900"></div>
+              <p className="text-sm text-blue-900 font-medium">Step 1 of 2 — Registering on Arc ERC-8004... Sign the transaction in your wallet.</p>
+            </div>
+          </div>
+        )}
+
+        {step === "listing" && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-900"></div>
+              <p className="text-sm text-blue-900 font-medium">Step 2 of 2 — Listing on Arcade marketplace... Sign the transaction in your wallet.</p>
+            </div>
           </div>
         )}
 
@@ -252,7 +275,7 @@ export default function ListAgentPage() {
         {isSuccess && (
           <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
             <p className="text-sm text-emerald-900 font-medium">
-              ✅ Agent listed successfully! Redirecting to marketplace...
+              Agent listed successfully. Redirecting to marketplace...
             </p>
             {hash && (
               <p className="text-xs text-emerald-700 mt-2">
@@ -525,15 +548,15 @@ export default function ListAgentPage() {
             <div className="flex gap-4">
               <Button
                 type="submit"
-                disabled={!isConnected || isPending || isConfirming || uploadingImage}
+                disabled={!isConnected || step !== "idle" || uploadingImage}
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-6 text-base font-medium rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {uploadingImage
-                  ? "Uploading image to IPFS..."
-                  : isPending
-                  ? "Awaiting Confirmation..."
-                  : isConfirming
-                  ? "Confirming Transaction..."
+                {step === "uploading"
+                  ? "Uploading to IPFS..."
+                  : step === "registering"
+                  ? "Step 1/2: Registering on Arc..."
+                  : step === "listing"
+                  ? "Step 2/2: Listing on Arcade..."
                   : "List Agent on Marketplace"}
               </Button>
               <Button
