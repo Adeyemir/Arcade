@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, MessageCircle, Database, Coins, Zap, Bot } from "lucide-react";
 import { getIPFSUrl } from "@/lib/ipfs";
+import { ReputationBadge } from "@/components/ReputationBadge";
 
 interface AgentCardProps {
   agentId: number;
@@ -13,6 +14,8 @@ interface AgentCardProps {
   owner: string;
   isVerified?: boolean;
   imageUrl?: string;
+  /** If true, show the live ERC-8004 reputation score from chain */
+  showReputation?: boolean;
 }
 
 // Category-based colors and icons
@@ -65,6 +68,7 @@ export function AgentCard({
   owner,
   isVerified = false,
   imageUrl,
+  showReputation = false,
 }: AgentCardProps) {
   const config = categoryConfig[category] || categoryConfig.General;
   const Icon = config.icon;
@@ -98,7 +102,7 @@ export function AgentCard({
                 } else if (img.src.includes('dweb.link')) {
                   img.src = img.src.replace('dweb.link', 'gateway.pinata.cloud');
                 } else {
-                  console.error(`❌ All gateways failed for agent #${agentId}:`, imageUrl);
+                  console.error(`All gateways failed for agent #${agentId}:`, imageUrl);
                   // Hide image and show icon
                   img.style.display = 'none';
                 }
@@ -140,6 +144,13 @@ export function AgentCard({
             <span className="text-slate-500 text-sm ml-1">ARC/hr</span>
           </div>
         </div>
+
+        {/* ERC-8004 Reputation */}
+        {showReputation && (
+          <div className="pt-1">
+            <ReputationBadge agentId={BigInt(agentId)} compact />
+          </div>
+        )}
 
         {/* CTA Button */}
         <Button

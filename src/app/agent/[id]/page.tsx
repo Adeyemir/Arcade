@@ -13,6 +13,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ArrowLeft, CheckCircle2, Clock, DollarSign, User, ExternalLink, Shield, Loader2 } from "lucide-react";
 import { RENTAL_MANAGER_ABI, RENTAL_MANAGER_ADDRESS } from "@/lib/blockchain/contracts/RentalManager";
 import { arc } from "@/lib/blockchain/arc";
+import { ReputationBadge } from "@/components/ReputationBadge";
+import { JobLifecycle } from "@/components/JobLifecycle";
+import { useAgentMetrics } from "@/lib/blockchain/hooks/useAgentMetrics";
 
 export default function AgentDetailPage() {
   const params = useParams();
@@ -24,8 +27,23 @@ export default function AgentDetailPage() {
   const [rentalHours, setRentalHours] = useState<number | string>('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [showError, setShowError] = useState(false);
+  const [erc8004AgentId, setErc8004AgentId] = useState<bigint | null>(null);
 
   const { data: agent, isLoading, error } = useAgent(parseInt(agentId));
+
+  // Fetch IPFS metadata to get the real ERC-8004 agentId
+  useEffect(() => {
+    const metadataHash = (agent as any)?.metadataHash;
+    if (!metadataHash || !metadataHash.startsWith("https://")) return;
+    fetch(metadataHash)
+      .then((r) => r.json())
+      .then((meta) => {
+        if (meta?.erc8004AgentId) {
+          setErc8004AgentId(BigInt(meta.erc8004AgentId));
+        }
+      })
+      .catch(() => {});
+  }, [(agent as any)?.metadataHash]);
 
   // Direct contract write - no custom hook
   const { data: hash, writeContractAsync, isPending, error: rentalError } = useWriteContract();
@@ -41,6 +59,9 @@ export default function AgentDetailPage() {
   }, [isSuccess, queryClient]);
 
   const { feePercent } = usePlatformFee();
+  const { tasksCompleted, activeRentals, isLoading: metricsLoading } = useAgentMetrics(
+    agent ? (agent as any).owner as `0x${string}` : undefined
+  );
 
   if (isLoading) {
     return (
@@ -115,25 +136,25 @@ export default function AgentDetailPage() {
 
     // Validation
     if (!address) {
-      console.error("❌ No wallet connected");
+      console.error("No wallet connected");
       setShowError(true);
       return;
     }
 
     if (!agent) {
-      console.error("❌ No agent data");
+      console.error("No agent data");
       setShowError(true);
       return;
     }
 
     if (!agent.isListed) {
-      console.error("❌ Agent not listed");
+      console.error("Agent not listed");
       setShowError(true);
       return;
     }
 
     if (isOwner) {
-      console.error("❌ User is owner - cannot rent own agent");
+      console.error("User is owner - cannot rent own agent");
       setShowError(true);
       return;
     }
@@ -162,7 +183,7 @@ export default function AgentDetailPage() {
       setShowSuccess(true);
 
     } catch (error: any) {
-      console.error("❌ Transaction failed!");
+      console.error("Transaction failed");
       console.error("Error:", error);
 
       const errorMsg = error?.shortMessage || error?.message || "Unknown error";
@@ -278,28 +299,32 @@ export default function AgentDetailPage() {
               <h3 className="text-base sm:text-lg text-slate-900 font-semibold mb-4">Performance Metrics</h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <div className="p-3 sm:p-4 bg-white border border-slate-100 rounded-lg">
-                  <div className="flex items-center gap-2 text-blue-600 mb-1">
-                    <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
-                    <span className="text-xs sm:text-sm font-medium">Uptime</span>
-                  </div>
-                  <p className="text-xl sm:text-2xl font-bold text-slate-900">99.9%</p>
-                  <p className="text-xs text-slate-600 mt-1">Last 30 days</p>
-                </div>
-                <div className="p-3 sm:p-4 bg-white border border-slate-100 rounded-lg">
                   <div className="flex items-center gap-2 text-emerald-600 mb-1">
                     <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4" />
                     <span className="text-xs sm:text-sm font-medium">Tasks Completed</span>
                   </div>
-                  <p className="text-xl sm:text-2xl font-bold text-slate-900">1,247</p>
-                  <p className="text-xs text-slate-600 mt-1">Total lifetime</p>
+                  <p className="text-xl sm:text-2xl font-bold text-slate-900">
+                    {metricsLoading ? "—" : tasksCompleted}
+                  </p>
+                  <p className="text-xs text-slate-600 mt-1">Total settled jobs</p>
                 </div>
                 <div className="p-3 sm:p-4 bg-white border border-slate-100 rounded-lg">
                   <div className="flex items-center gap-2 text-purple-600 mb-1">
                     <User className="h-3 w-3 sm:h-4 sm:w-4" />
                     <span className="text-xs sm:text-sm font-medium">Active Rentals</span>
                   </div>
-                  <p className="text-xl sm:text-2xl font-bold text-slate-900">0</p>
+                  <p className="text-xl sm:text-2xl font-bold text-slate-900">
+                    {metricsLoading ? "—" : activeRentals}
+                  </p>
                   <p className="text-xs text-slate-600 mt-1">Currently running</p>
+                </div>
+                <div className="p-3 sm:p-4 bg-white border border-slate-100 rounded-lg">
+                  <div className="flex items-center gap-2 text-blue-600 mb-1">
+                    <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
+                    <span className="text-xs sm:text-sm font-medium">ERC-8004 Score</span>
+                  </div>
+                  <ReputationBadge agentId={erc8004AgentId ?? BigInt(0)} compact />
+                  <p className="text-xs text-slate-600 mt-1">On-chain reputation</p>
                 </div>
               </div>
             </div>
@@ -325,7 +350,7 @@ export default function AgentDetailPage() {
                           0x02b0...E3a4
                         </dd>
                       </div>
-                      <div className="flex justify-between py-3 px-4 min-w-[300px]">
+                      <div className="flex justify-between py-3 px-4 border-b border-slate-100 min-w-[300px]">
                         <dt className="text-xs sm:text-sm font-medium text-slate-600">Listed Status</dt>
                         <dd className="text-xs sm:text-sm font-semibold text-slate-900">
                           {agent.isListed ? (
@@ -335,6 +360,8 @@ export default function AgentDetailPage() {
                           )}
                         </dd>
                       </div>
+                      {/* ERC-8004 live reputation row */}
+                      <ReputationBadge agentId={erc8004AgentId ?? BigInt(0)} />
                     </dl>
                   </div>
                 </div>
@@ -460,6 +487,18 @@ export default function AgentDetailPage() {
                       )}
                     </Button>
                   )}
+
+                  {/* Xcrow Job Lifecycle (USDC escrow via ERC-8004) */}
+                  <div className="pt-4 border-t">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+                      Or hire via Xcrow (USDC Escrow)
+                    </p>
+                    <JobLifecycle
+                      agentWallet={agent.owner as `0x${string}`}
+                      taskDescription={agent.description || `Task for agent #${agentId}`}
+                      erc8004AgentId={erc8004AgentId ?? BigInt(0)}
+                    />
+                  </div>
 
                   {/* Features */}
                   <div className="pt-4 border-t space-y-2">

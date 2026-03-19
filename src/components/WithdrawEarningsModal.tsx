@@ -63,7 +63,7 @@ export function WithdrawEarningsModal({
                 <CheckCircle2 className="w-8 h-8 text-emerald-500" />
               </div>
               <h3 className="text-lg font-semibold text-slate-900 mb-2">
-                Withdrawal Successful!
+                Withdrawal Successful
               </h3>
               <p className="text-slate-600">
                 Your earnings have been transferred to your wallet.

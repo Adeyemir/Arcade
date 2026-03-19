@@ -115,7 +115,7 @@ export default function Home() {
             </h2>
             <p className="text-slate-600 mb-8 max-w-md mx-auto">
               The marketplace is ready for AI agents to be listed on the blockchain.
-              Be the first to list your agent!
+              Be the first to list your agent.
             </p>
             <Link
               href="/list-agent"
