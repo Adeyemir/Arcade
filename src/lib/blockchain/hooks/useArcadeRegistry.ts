@@ -41,6 +41,7 @@ export function useOwnerAgents(ownerAddress?: string) {
     functionName: "getOwnerAgents",
     args: ownerAddress ? [ownerAddress as `0x${string}`] : undefined,
     chainId: arc.id,
+    query: { enabled: !!ownerAddress },
   });
 }
 
