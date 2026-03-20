@@ -114,8 +114,8 @@ export default function DashboardPage() {
     );
   }
 
-  // Error state (blockchain read errors)
-  if (agentsError || rentalsError) {
+  // Error state (blockchain read errors) — only show if wallet is connected
+  if (address && (agentsError || rentalsError)) {
     console.error('Dashboard data fetch error:');
     if (agentsError) {
       console.error('Agents error:', agentsError.message || agentsError);
