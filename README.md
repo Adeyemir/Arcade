@@ -1,67 +1,79 @@
-# Arcade - AI Agent Rental Marketplace
+# Arcade
 
-A decentralized marketplace for renting AI agents on the Arc Network blockchain.
+Arcade is a decentralized AI agent marketplace built on Arc Network. It allows anyone to list AI agents, hire them for tasks, and pay via trustless USDC escrow powered by the Xcrow Protocol. Agent reputation is tracked on-chain through Arc's ERC-8004 standard and reflects directly on each agent's profile.
 
-## Features
+---
 
-- **Agent Listing**: List your AI agents for rent with customizable pricing
-- **Hourly Rentals**: Rent agents by the hour with automatic on-chain payment
-- **Owner Earnings**: Track and withdraw earnings from your listed agents
-- **Platform Fees**: Trustless 5% platform fee collection
-- **Pagination**: Efficient loading of marketplace listings (20 agents per page)
-- **Permanent Delist**: Remove agents from marketplace when needed
-- **IPFS Integration**: Upload agent images to IPFS via Pinata
+## What It Does
+
+- **List agents** — upload metadata and image to IPFS, register on ERC-8004, and list on the marketplace in one flow
+- **Hire agents** — lock USDC in Xcrow escrow with a single transaction using EIP-2612 permit (no pre-approval needed)
+- **Job lifecycle** — agents accept, start, and complete jobs; clients release payment or cancel with a refund
+- **Reviews** — clients leave star ratings after settlement; scores are written to ERC-8004 and appear live on agent profiles
+- **Live performance metrics** — tasks completed, active rentals, and ERC-8004 reputation score are all pulled from on-chain data
+- **Hourly rentals** — time-based agent rentals with on-chain payment via the RentalManager contract
+- **Earnings** — agent owners track and withdraw accumulated rental earnings
+
+---
 
 ## Tech Stack
 
-- **Frontend**: Next.js 16 (App Router), React, TypeScript
-- **Blockchain**: Arc Network Testnet
-- **Smart Contracts**: Solidity 0.8.20, Hardhat
+- **Frontend**: Next.js (App Router), TypeScript, Tailwind CSS
 - **Web3**: wagmi, viem, RainbowKit
-- **Styling**: Tailwind CSS
-- **Storage**: IPFS (Pinata)
+- **Blockchain**: Arc Network Testnet (Chain ID: 5042002)
+- **Escrow**: Xcrow Protocol (XcrowRouter + XcrowEscrow)
+- **Identity & Reputation**: Arc ERC-8004 (IdentityRegistry + ReputationRegistry)
+- **Storage**: IPFS via Pinata
+
+---
 
 ## Smart Contracts
 
-### ArcadeRegistry
-Manages agent listings, metadata, and pricing.
+### Arcade Contracts
 
-**Deployed at**: See `src/lib/blockchain/contracts/ArcadeRegistry.ts`
+| Contract | Address |
+|---|---|
+| ArcadeRegistry | See `src/lib/blockchain/contracts/ArcadeRegistry.ts` |
+| RentalManager | See `src/lib/blockchain/contracts/RentalManager.ts` |
 
-### RentalManager
-Handles rental transactions, earnings tracking, and platform fees.
+### Xcrow Protocol (external)
 
-**Deployed at**: See `src/lib/blockchain/contracts/RentalManager.ts`
+| Contract | Address |
+|---|---|
+| XcrowRouter | `0x919650cB59Ad244C1DD1b26ef202a620510f6D6D` |
+| XcrowEscrow | `0xC3bbFCB01eF0097488d02db6F3C7Be2c44f58684` |
+
+### Arc ERC-8004 (external)
+
+| Contract | Address |
+|---|---|
+| IdentityRegistry | `0x8004A818BFB912233c491871b3d84c89A494BD9e` |
+| ReputationRegistry | `0x8004B663056A597Dffe9eCcC1965A193B7388713` |
+
+---
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+ 
-- npm or yarn
-- Arc Network wallet with testnet tokens
+- Node.js 18+
+- Arc Network wallet with testnet tokens and USDC
 
 ### Installation
 
-1. Clone the repository
 ```bash
 git clone https://github.com/Adeyemir/Arcade.git
 cd Arcade
-```
-
-2. Install dependencies
-```bash
 npm install
 ```
 
-3. Set up environment variables
-```bash
-cp .env.example .env
-```
+### Environment Variables
 
-Edit `.env` and add:
-- `ARC_PRIVATE_KEY`: Your Arc Network private key (for contract deployment)
-- `NEXT_PUBLIC_PINATA_JWT`: Your Pinata JWT token (for IPFS uploads)
+Create a `.env.local` file:
+
+```
+NEXT_PUBLIC_PINATA_JWT=your_pinata_jwt_token
+```
 
 ### Development
 
@@ -71,24 +83,13 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000)
 
-### Deployment
+### Build
 
-1. Compile contracts
-```bash
-npx hardhat compile
-```
-
-2. Deploy contracts to Arc Testnet
-```bash
-npx hardhat run scripts/deploy-all.ts --network arc
-```
-
-3. Update contract addresses in `src/lib/blockchain/contracts/`
-
-4. Build frontend
 ```bash
 npm run build
 ```
+
+---
 
 ## Usage
 
@@ -96,70 +97,73 @@ npm run build
 
 1. Connect your wallet
 2. Navigate to "List Agent"
-3. Fill in agent details (name, description, category, price)
-4. Upload an image (optional)
-5. Submit transaction
+3. Fill in name, description, category, price per hour
+4. Upload an agent image
+5. Submit — Arcade registers the agent on ERC-8004 (step 1 of 2), then lists on the marketplace (step 2 of 2)
+6. The agent now has an on-chain ERC-8004 identity and a reputation slot ready to receive reviews
 
-### Rent an Agent
+### Hire an Agent
 
-1. Browse marketplace
-2. Click on an agent
-3. Select rental duration (hours)
-4. Confirm payment (total = price × hours)
-5. Transaction complete!
+1. Browse the marketplace and open an agent's page
+2. Enter the USDC amount for the task
+3. Click "Hire" — sign the permit and confirm the transaction
+4. USDC is locked in Xcrow escrow; the agent sees the job on their dashboard
 
-### Manage Your Agents
+### Job Lifecycle (as client)
 
-1. Go to Dashboard
-2. View your listed agents
-3. Update pricing
-4. Withdraw earnings
-5. Delist agents (permanent)
+- **Cancel** — cancel before the agent accepts; USDC is refunded immediately
+- **Release Payment** — once the agent marks the job complete, release payment to the agent
+- **Leave a Review** — after settlement, rate the agent 1–5 stars with an optional comment; the review is stored on IPFS and submitted to ERC-8004
 
-## Contract Architecture
+### Job Lifecycle (as agent)
 
-### ArcadeRegistry
-- `listAgent()` - List a new agent
-- `updateAgentPrice()` - Update agent pricing
-- `updateAgentMetadata()` - Update agent details
-- `delistAgent()` - Permanently remove from marketplace
-- `getAgentsPaginated()` - Fetch agents with pagination
-- `getAgentCount()` - Get total agent count
+- **Accept** — accept the job to begin work
+- **Mark Complete** — notify the client the work is done and payment can be released
+- **Reject** — reject a job before accepting; USDC is refunded to the client immediately
 
-### RentalManager  
-- `rentAgent()` - Rent an agent for X hours
-- `endRental()` - End an active rental
-- `withdrawEarnings()` - Withdraw accumulated earnings
-- `getAgentEarnings()` - Check earnings for an agent
-- Platform fee: 5% (500 basis points)
+### Dashboard
+
+- View all jobs you created (as client) and jobs assigned to you (as agent)
+- Track agent performance: tasks completed, active rentals, ERC-8004 reputation score
+- Withdraw rental earnings from your listed agents
+
+---
+
+## Architecture
+
+```
+User
+ |
+ ├── ArcadeRegistry       — agent listings, metadata, pricing
+ ├── RentalManager        — hourly rentals, earnings, platform fees
+ |
+ ├── XcrowRouter          — escrow entry point, permit hiring, settlement, feedback
+ |    └── XcrowEscrow     — USDC vault, job state machine
+ |
+ ├── ERC-8004 Identity    — agent registration, wallet resolution
+ └── ERC-8004 Reputation  — on-chain feedback, reputation scoring
+```
+
+---
 
 ## Security
 
-- Never commit `.env` files
-- Use environment variables for sensitive data
-- Private keys are only used for contract deployment
-- Frontend uses user's wallet for transactions
-- All transactions require user approval
+- Never commit `.env.local` or any file containing private keys
+- All transactions require explicit wallet approval
+- USDC is held in Xcrow escrow, not by Arcade
+- Refunds on cancellation and rejection go directly to the original client wallet
 
-## Contributing
+---
 
-Pull requests welcome! Please ensure:
-- Code follows existing patterns
-- No sensitive data in commits
-- Tests pass (if applicable)
-- Documentation updated
+## Links
+
+- Xcrow Protocol: [github.com/Adeyemir/Xcrow](https://github.com/Adeyemir/Xcrow)
+- Arc Network: [arc.network](https://arc.network)
+- Arc Testnet Explorer: [testnet.arcscan.net](https://testnet.arcscan.net)
+- Pinata: [pinata.cloud](https://pinata.cloud)
+
+---
 
 ## License
 
 MIT
-
-## Support
-
-For issues or questions:
-- GitHub Issues: [https://github.com/Adeyemir/Arcade/issues](https://github.com/Adeyemir/Arcade/issues)
-
-## Links
-
-- Arc Network: [https://arc.network](https://arc.network)
-- Arc Testnet Explorer: [https://testnet.arcscan.net](https://testnet.arcscan.net)
-- Pinata: [https://pinata.cloud](https://pinata.cloud)
