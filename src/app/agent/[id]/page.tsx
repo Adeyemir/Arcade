@@ -28,6 +28,8 @@ export default function AgentDetailPage() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [showError, setShowError] = useState(false);
   const [erc8004AgentId, setErc8004AgentId] = useState<bigint | null>(null);
+  const [agentEndpoint, setAgentEndpoint] = useState<string | null>(null);
+  const [supportedInputTypes, setSupportedInputTypes] = useState<string[]>(["text"]);
 
   const { data: agent, isLoading, error } = useAgent(parseInt(agentId));
 
@@ -38,9 +40,9 @@ export default function AgentDetailPage() {
     fetch(metadataHash)
       .then((r) => r.json())
       .then((meta) => {
-        if (meta?.erc8004AgentId) {
-          setErc8004AgentId(BigInt(meta.erc8004AgentId));
-        }
+        if (meta?.erc8004AgentId) setErc8004AgentId(BigInt(meta.erc8004AgentId));
+        if (meta?.apiEndpoint) setAgentEndpoint(meta.apiEndpoint);
+        if (Array.isArray(meta?.input_types)) setSupportedInputTypes(meta.input_types);
       })
       .catch(() => {});
   }, [(agent as any)?.metadataHash]);
@@ -497,6 +499,8 @@ export default function AgentDetailPage() {
                       agentWallet={agent.owner as `0x${string}`}
                       taskDescription={agent.description || `Task for agent #${agentId}`}
                       erc8004AgentId={erc8004AgentId ?? BigInt(0)}
+                      agentEndpoint={agentEndpoint}
+                      supportedInputTypes={supportedInputTypes}
                     />
                   </div>
 
