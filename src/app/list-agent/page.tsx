@@ -15,14 +15,20 @@ export default function ListAgentPage() {
   const queryClient = useQueryClient();
   const router = useRouter();
 
+  const INPUT_TYPES = ["Text", "Image", "Audio", "Video", "File"] as const;
+  const OUTPUT_TYPES = ["Text", "Image", "Audio", "Video", "File"] as const;
+  type IOType = typeof INPUT_TYPES[number];
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     category: "",
-    pricePerHour: "",
+    minPriceUsdc: "",
     dockerImage: "",
     apiEndpoint: "",
   });
+  const [inputTypes, setInputTypes] = useState<IOType[]>(["Text"]);
+  const [outputTypes, setOutputTypes] = useState<IOType[]>(["Text"]);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -43,7 +49,7 @@ export default function ListAgentPage() {
         name: "",
         description: "",
         category: "",
-        pricePerHour: "",
+        minPriceUsdc: "",
         dockerImage: "",
         apiEndpoint: "",
       });
@@ -77,14 +83,14 @@ export default function ListAgentPage() {
     }
 
     // Validation
-    if (!formData.name || !formData.description || !formData.category || !formData.pricePerHour) {
+    if (!formData.name || !formData.description || !formData.category || !formData.minPriceUsdc) {
       setError("Please fill in all required fields");
       console.error("Missing required fields");
       return;
     }
 
-    if (parseFloat(formData.pricePerHour) <= 0) {
-      setError("Price must be greater than 0");
+    if (parseFloat(formData.minPriceUsdc) <= 0) {
+      setError("Minimum price must be greater than 0");
       console.error("Invalid price");
       return;
     }
@@ -119,6 +125,9 @@ export default function ListAgentPage() {
         image: imageUrl,
         category: formData.category,
         capabilities: [formData.category.toLowerCase()],
+        input_types: inputTypes.map((t) => t.toLowerCase()),
+        output_types: outputTypes.map((t) => t.toLowerCase()),
+        min_price_usdc: formData.minPriceUsdc,
         ...(formData.dockerImage && { dockerImage: formData.dockerImage }),
         ...(formData.apiEndpoint && { apiEndpoint: formData.apiEndpoint }),
       };
@@ -140,7 +149,7 @@ export default function ListAgentPage() {
         formData.name,
         formData.description,
         formData.category,
-        formData.pricePerHour,
+        "1",
         finalMetadataURI,
         imageUrl
       );
@@ -453,33 +462,33 @@ export default function ListAgentPage() {
                 </div>
               </div>
 
-              {/* Price Per Hour */}
+              {/* Minimum Price Per Task */}
               <div>
                 <label
-                  htmlFor="pricePerHour"
+                  htmlFor="minPriceUsdc"
                   className="block text-sm font-medium text-slate-900 mb-2"
                 >
-                  Price Per Hour (ARC) <span className="text-red-500">*</span>
+                  Minimum Price Per Task (USDC) <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <input
                     type="number"
-                    id="pricePerHour"
-                    name="pricePerHour"
-                    value={formData.pricePerHour}
+                    id="minPriceUsdc"
+                    name="minPriceUsdc"
+                    value={formData.minPriceUsdc}
                     onChange={handleInputChange}
-                    placeholder="50"
-                    min="0"
+                    placeholder="5"
+                    min="0.01"
                     step="0.01"
                     className="w-full px-4 py-3 text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
                     required
                   />
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500">
-                    ARC
+                    USDC
                   </div>
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  Set a competitive price for your agent's services
+                  Clients must pay at least this amount per task via Xcrow escrow
                 </p>
               </div>
 
@@ -526,6 +535,56 @@ export default function ListAgentPage() {
                   API endpoint for agent communication (optional)
                 </p>
               </div>
+
+              {/* Input Types */}
+              <div>
+                <label className="block text-sm font-medium text-slate-900 mb-2">
+                  Accepted Input Types <span className="text-red-500">*</span>
+                </label>
+                <p className="text-xs text-slate-500 mb-3">What can clients send to this agent?</p>
+                <div className="flex flex-wrap gap-3">
+                  {INPUT_TYPES.map((type) => (
+                    <label key={type} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={inputTypes.includes(type)}
+                        onChange={(e) => {
+                          setInputTypes(e.target.checked
+                            ? [...inputTypes, type]
+                            : inputTypes.filter((t) => t !== type));
+                        }}
+                        className="w-4 h-4 accent-blue-600"
+                      />
+                      <span className="text-sm text-slate-700">{type}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Output Types */}
+              <div>
+                <label className="block text-sm font-medium text-slate-900 mb-2">
+                  Output Types <span className="text-red-500">*</span>
+                </label>
+                <p className="text-xs text-slate-500 mb-3">What does this agent produce?</p>
+                <div className="flex flex-wrap gap-3">
+                  {OUTPUT_TYPES.map((type) => (
+                    <label key={type} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={outputTypes.includes(type)}
+                        onChange={(e) => {
+                          setOutputTypes(e.target.checked
+                            ? [...outputTypes, type]
+                            : outputTypes.filter((t) => t !== type));
+                        }}
+                        className="w-4 h-4 accent-blue-600"
+                      />
+                      <span className="text-sm text-slate-700">{type}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* Divider */}
@@ -566,8 +625,8 @@ export default function ListAgentPage() {
                   setFormData({
                     name: "",
                     description: "",
-                    category: "Trading",
-                    pricePerHour: "",
+                    category: "",
+                    minPriceUsdc: "",
                     dockerImage: "",
                     apiEndpoint: "",
                   })
@@ -629,7 +688,7 @@ export default function ListAgentPage() {
             </div>
             <h3 className="font-semibold text-slate-900 mb-2">Earn Passive Income</h3>
             <p className="text-sm text-slate-600">
-              Your agent works 24/7 while you earn ARC tokens
+              Your agent works 24/7 while you earn USDC per task
             </p>
           </div>
 

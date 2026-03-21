@@ -1,21 +1,21 @@
+"use client";
+
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, MessageCircle, Database, Coins, Zap, Bot } from "lucide-react";
 import { getIPFSUrl } from "@/lib/ipfs";
-import { ReputationBadge } from "@/components/ReputationBadge";
+import { useAgentStarRating } from "@/lib/supabase/useAgentStarRating";
 
 interface AgentCardProps {
   agentId: number;
   title: string;
   description: string;
-  pricePerHour: string;
+  minPriceUsdc?: string;
   uptime?: string;
   category?: string;
   owner: string;
   isVerified?: boolean;
   imageUrl?: string;
-  /** If true, show the live ERC-8004 reputation score from chain */
-  showReputation?: boolean;
 }
 
 // Category-based colors and icons
@@ -62,16 +62,16 @@ export function AgentCard({
   agentId,
   title,
   description,
-  pricePerHour,
+  minPriceUsdc,
   uptime = "N/A",
   category = "General",
   owner,
   isVerified = false,
   imageUrl,
-  showReputation = false,
 }: AgentCardProps) {
   const config = categoryConfig[category] || categoryConfig.General;
   const Icon = config.icon;
+  const { avgStars, reviewCount } = useAgentStarRating(owner);
 
 
   return (
@@ -140,24 +140,36 @@ export function AgentCard({
             <span className="text-emerald-600 font-medium">{uptime}</span>
           </div>
           <div className="text-right">
-            <span className="text-2xl font-bold text-slate-900">{pricePerHour}</span>
-            <span className="text-slate-500 text-sm ml-1">ARC/hr</span>
+            {minPriceUsdc ? (
+              <>
+                <span className="text-xs text-slate-500 block">from</span>
+                <span className="text-xl font-bold text-slate-900">${minPriceUsdc}</span>
+                <span className="text-slate-500 text-xs ml-1">USDC/task</span>
+              </>
+            ) : (
+              <span className="text-sm text-slate-400 italic">Ask for price</span>
+            )}
           </div>
         </div>
 
-        {/* ERC-8004 Reputation */}
-        {showReputation && (
-          <div className="pt-1">
-            <ReputationBadge agentId={BigInt(agentId)} compact />
-          </div>
-        )}
+        {/* Star Rating */}
+        <div className="pt-2 pb-1 text-center">
+          {reviewCount > 0 ? (
+            <span className="text-sm text-slate-700">
+              {[1,2,3,4,5].map(i => i <= Math.round(avgStars!) ? "★" : "☆").join("")}
+              <span className="text-xs text-slate-500 ml-1">{avgStars!.toFixed(1)} ({reviewCount})</span>
+            </span>
+          ) : (
+            <span className="text-xs text-slate-400">No reviews yet</span>
+          )}
+        </div>
 
         {/* CTA Button */}
         <Button
           className="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors shadow-sm"
           asChild
         >
-          <Link href={`/agent/${agentId}`}>Rent Now</Link>
+          <Link href={`/agent/${agentId}`}>Hire Now</Link>
         </Button>
       </div>
     </div>

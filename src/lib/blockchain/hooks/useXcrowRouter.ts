@@ -15,6 +15,8 @@ import {
   USDC_ADDRESS,
   USDC_ABI,
 } from "../contracts/XcrowRouter";
+import { ERC8004_REPUTATION_ADDRESS, ERC8004_REPUTATION_ABI } from "../contracts/ERC8004";
+import { supabase } from "../../supabase/client";
 import { arc } from "../arc";
 
 const USDC_DECIMALS = 6;
@@ -244,12 +246,12 @@ export type Job = {
 export function useClientJobs(address: `0x${string}` | undefined) {
   const publicClient = usePublicClient({ chainId: arc.id });
   const [jobIds, setJobIds] = useState<bigint[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const fetch = async () => {
+  const fetch = async (showSpinner = false) => {
     if (!address || !publicClient) return;
-    setIsLoading(true);
+    if (showSpinner) setIsLoading(true);
     setError(null);
     try {
       const DEPLOY_BLOCK = BigInt(32718375); // XcrowRouter deployment block
@@ -268,18 +270,31 @@ export function useClientJobs(address: `0x${string}` | undefined) {
         ],
       } as const;
 
-      const allIds: bigint[] = [];
+      // Build chunk ranges
+      const ranges: { from: bigint; to: bigint }[] = [];
       for (let from = DEPLOY_BLOCK; from <= latestBlock; from += CHUNK_SIZE + BigInt(1)) {
         const to = from + CHUNK_SIZE > latestBlock ? latestBlock : from + CHUNK_SIZE;
-        const logs = await publicClient.getLogs({
-          address: XCROW_ROUTER_ADDRESS,
-          event: agentHiredEvent,
-          args: { client: address },
-          fromBlock: from,
-          toBlock: to,
-        });
-        allIds.push(...logs.map((l) => (l.args as { jobId: bigint }).jobId));
+        ranges.push({ from, to });
       }
+
+      // Fetch all chunks in parallel instead of sequentially
+      const chunkResults = await Promise.all(
+        ranges.map(({ from, to }) =>
+          publicClient.getLogs({
+            address: XCROW_ROUTER_ADDRESS,
+            event: agentHiredEvent,
+            args: { client: address },
+            fromBlock: from,
+            toBlock: to,
+          })
+        )
+      );
+
+      const allIds = chunkResults
+        .flat()
+        .map((l) => (l.args as { jobId: bigint }).jobId)
+        .sort((a, b) => (a > b ? -1 : 1)); // newest (highest ID) first
+
       setJobIds(allIds);
     } catch (e: any) {
       setError(e);
@@ -288,7 +303,11 @@ export function useClientJobs(address: `0x${string}` | undefined) {
     }
   };
 
-  useEffect(() => { fetch(); }, [address, publicClient]);
+  useEffect(() => {
+    fetch(true); // show spinner on first load only
+    const interval = setInterval(() => fetch(false), 10000); // silent re-scan every 10s
+    return () => clearInterval(interval);
+  }, [address, publicClient]);
 
   return { jobIds, isLoading, error, refetch: fetch };
 }
@@ -389,11 +408,28 @@ export function useCompleteJob() {
 // ---------------------------------------------------------------------------
 
 export function useSubmitFeedback() {
-  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const publicClient = usePublicClient({ chainId: arc.id });
+  const { writeContractAsync: xcrowWrite } = useWriteContract();
+  const { writeContractAsync: erc8004Write } = useWriteContract();
+  const [isPending, setIsPending] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-  const submitFeedback = async (jobId: bigint, stars: number, comment: string) => {
-    // Upload comment to IPFS if provided, else use empty strings
+  const submitFeedback = async (
+    jobId: bigint,
+    stars: number,
+    comment: string,
+    erc8004AgentId: bigint,
+    agentAddress: string,
+    clientAddress: string,
+  ) => {
+    setIsPending(false);
+    setIsConfirming(false);
+    setIsSuccess(false);
+    setError(null);
+
+    // Upload comment to IPFS if provided
     let feedbackURI = "";
     let feedbackHash: `0x${string}` = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -413,7 +449,6 @@ export function useSubmitFeedback() {
           if (res.ok) {
             const data = await res.json();
             feedbackURI = `ipfs://${data.IpfsHash}`;
-            // keccak256 of the comment for on-chain reference
             const enc = new TextEncoder().encode(comment);
             const digest = await crypto.subtle.digest("SHA-256", enc);
             feedbackHash = `0x${Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("")}` as `0x${string}`;
@@ -422,14 +457,122 @@ export function useSubmitFeedback() {
       }
     }
 
-    return writeContractAsync({
-      address: XCROW_ROUTER_ADDRESS,
-      abi: XCROW_ROUTER_ABI,
-      functionName: "submitFeedback",
-      args: [jobId, BigInt(stars), 0, "rating", feedbackURI, feedbackHash],
-      chainId: arc.id,
-    });
+    try {
+      // Step 1: XcrowRouter.submitFeedback
+      setIsPending(true);
+      const xcrowHash = await xcrowWrite({
+        address: XCROW_ROUTER_ADDRESS,
+        abi: XCROW_ROUTER_ABI,
+        functionName: "submitFeedback",
+        args: [jobId, BigInt(stars), 0, "rating", feedbackURI, feedbackHash],
+        chainId: arc.id,
+      });
+      setIsPending(false);
+      setIsConfirming(true);
+      await publicClient!.waitForTransactionReceipt({ hash: xcrowHash });
+
+      // Step 2: ERC-8004 ReputationRegistry.giveFeedback (only if agent has ERC-8004 identity)
+      if (erc8004AgentId > BigInt(0)) {
+        setIsPending(true);
+        setIsConfirming(false);
+        const erc8004Hash = await erc8004Write({
+          address: ERC8004_REPUTATION_ADDRESS,
+          abi: ERC8004_REPUTATION_ABI,
+          functionName: "giveFeedback",
+          args: [erc8004AgentId, BigInt(stars), 0, "rating", "", "", feedbackURI, feedbackHash],
+          chainId: arc.id,
+        });
+        setIsPending(false);
+        setIsConfirming(true);
+        await publicClient!.waitForTransactionReceipt({ hash: erc8004Hash });
+      }
+
+      setIsConfirming(false);
+
+      // Step 3: Cache in Supabase reviews table
+      await supabase.from("reviews").insert({
+        job_id: jobId.toString(),
+        agent_id: erc8004AgentId.toString(),
+        agent_address: agentAddress.toLowerCase(),
+        stars,
+        comment_uri: feedbackURI || null,
+        client_address: clientAddress.toLowerCase(),
+      });
+
+      setIsSuccess(true);
+    } catch (e: any) {
+      setIsPending(false);
+      setIsConfirming(false);
+      setError(e);
+      throw e;
+    }
   };
 
-  return { submitFeedback, isPending, isConfirming, isSuccess, error, hash };
+  return { submitFeedback, isPending, isConfirming, isSuccess, error };
+}
+
+// ---------------------------------------------------------------------------
+// Total USDC earned by an agent wallet from settled Xcrow jobs
+// ---------------------------------------------------------------------------
+
+export function useAgentXcrowEarnings(wallet: `0x${string}` | undefined) {
+  const publicClient = usePublicClient({ chainId: arc.id });
+  const [totalUsdc, setTotalUsdc] = useState<number>(0);
+  const [jobCount, setJobCount] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!wallet || !publicClient) return;
+
+    const fetch = async () => {
+      try {
+        const jobIds = await publicClient.readContract({
+          address: XCROW_ESCROW_ADDRESS,
+          abi: XCROW_ESCROW_ABI,
+          functionName: "getAgentWalletJobs",
+          args: [wallet],
+        }) as bigint[];
+
+        if (!jobIds || jobIds.length === 0) {
+          setTotalUsdc(0);
+          setJobCount(0);
+          setIsLoading(false);
+          return;
+        }
+
+        const jobs = await Promise.all(
+          jobIds.map((id) =>
+            publicClient.readContract({
+              address: XCROW_ESCROW_ADDRESS,
+              abi: XCROW_ESCROW_ABI,
+              functionName: "getJob",
+              args: [id],
+            })
+          )
+        );
+
+        let total = BigInt(0);
+        let settled = 0;
+        for (const job of jobs as any[]) {
+          // status 4 = Settled
+          if (job.status === 4) {
+            total += BigInt(job.amount) - BigInt(job.platformFee);
+            settled++;
+          }
+        }
+        setTotalUsdc(Number(total) / 1e6);
+        setJobCount(settled);
+      } catch {
+        // silent — show 0 on error
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetch();
+    const interval = setInterval(fetch, 15000);
+    return () => clearInterval(interval);
+  }, [wallet, publicClient]);
+
+  return { totalUsdc, jobCount, isLoading };
 }

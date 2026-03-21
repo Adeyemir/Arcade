@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useAccount } from "wagmi";
 import { formatEther } from "viem";
 import Link from "next/link";
-import { useOwnerEarnings, useAgentEarnings } from "@/lib/blockchain/hooks/useOwnerEarnings";
+import { useAgentEarnings } from "@/lib/blockchain/hooks/useOwnerEarnings";
 import {
   Bot,
   Clock,
@@ -14,7 +14,6 @@ import {
   BarChart3,
   Calendar,
   Activity,
-  Wallet,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -31,13 +30,14 @@ import {
   useSettleJob,
   useCancelJob,
   useSubmitFeedback,
+  useAgentXcrowEarnings,
   JOB_STATUS,
 } from "@/lib/blockchain/hooks/useXcrowRouter";
+import { supabase, ArcadeJob } from "@/lib/supabase/client";
 import { AgentManageModal } from "@/components/AgentManageModal";
 import { DelistAgentModal } from "@/components/DelistAgentModal";
 import { ExtendRentalModal } from "@/components/ExtendRentalModal";
 import { SimpleBarChart } from "@/components/SimpleBarChart";
-import { WithdrawEarningsModal } from "@/components/WithdrawEarningsModal";
 
 // Custom hook to calculate rental statistics
 function useRentalStats(rentalIds?: string[]): [number] {
@@ -69,7 +69,7 @@ export default function DashboardPage() {
   const { address, isConnected } = useAccount();
   const [activeTab, setActiveTab] = useState<"agents" | "rentals" | "xcrow">("agents");
   const [mounted, setMounted] = useState(false);
-  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+
 
   // Fetch user's owned agents with error handling
   const {
@@ -87,8 +87,7 @@ export default function DashboardPage() {
   const ownedAgentIds = ownedAgentIdsRaw?.map(id => Number(id));
   const rentalIds = rentalIdsRaw?.map(id => id.toString());
 
-  // Get owner earnings for withdraw modal
-  const { totalEarnings } = useOwnerEarnings(address);
+
 
   // Ensure consistent server/client rendering
   useEffect(() => {
@@ -210,7 +209,6 @@ export default function DashboardPage() {
         <StatsSection
           ownedAgentIds={ownedAgentIds}
           rentalIds={rentalIds}
-          onWithdrawClick={() => setShowWithdrawModal(true)}
         />
 
         {/* Tabs */}
@@ -271,12 +269,6 @@ export default function DashboardPage() {
         {activeTab === "xcrow" && <XcrowJobsSection address={address} />}
       </div>
 
-      {/* Withdraw Earnings Modal */}
-      <WithdrawEarningsModal
-        isOpen={showWithdrawModal}
-        onClose={() => setShowWithdrawModal(false)}
-        availableBalance={totalEarnings || "0"}
-      />
     </main>
   );
 }
@@ -285,18 +277,16 @@ export default function DashboardPage() {
 function StatsSection({
   ownedAgentIds,
   rentalIds,
-  onWithdrawClick,
 }: {
   ownedAgentIds?: number[];
   rentalIds?: string[];
-  onWithdrawClick: () => void;
 }) {
   const { address } = useAccount();
   const totalAgents = ownedAgentIds?.length || 0;
   const totalRentals = rentalIds?.length || 0;
 
-  // Get real earnings from contract
-  const { totalEarnings, isLoading: earningsLoading } = useOwnerEarnings(address);
+  // Total USDC earned from settled Xcrow jobs
+  const { totalUsdc, jobCount, isLoading: earningsLoading } = useAgentXcrowEarnings(address);
 
   // Calculate active rentals
   const [activeRentals] = useRentalStats(rentalIds);
@@ -346,17 +336,9 @@ function StatsSection({
         ) : (
           <>
             <p className="text-2xl sm:text-3xl font-bold text-slate-900">
-              {parseFloat(totalEarnings).toFixed(4)}
+              {totalUsdc.toFixed(2)} <span className="text-base font-medium text-slate-500">USDC</span>
             </p>
-            <p className="text-xs text-slate-500 mt-1">ARC earned</p>
-            <Button
-              onClick={onWithdrawClick}
-              className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white text-sm py-2"
-              disabled={parseFloat(totalEarnings) === 0}
-            >
-              <Wallet className="w-4 h-4 mr-2" />
-              Withdraw Earnings
-            </Button>
+            <p className="text-xs text-slate-500 mt-1">{jobCount} job{jobCount !== 1 ? "s" : ""} completed</p>
           </>
         )}
       </div>
@@ -422,7 +404,6 @@ function AgentCard({ agentId }: { agentId: number }) {
   }
 
   const agentData = agent as any;
-  const pricePerHour = formatEther(agentData.pricePerHour);
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 hover:shadow-lg transition-shadow">
@@ -459,9 +440,6 @@ function AgentCard({ agentId }: { agentId: number }) {
                   }`}
                 >
                   {agentData.isListed ? "Listed" : "Unlisted"}
-                </span>
-                <span className="text-sm text-slate-600">
-                  {pricePerHour} ARC/hr
                 </span>
               </div>
             </div>
@@ -864,7 +842,7 @@ function XcrowJobsSection({ address }: { address: `0x${string}` | undefined }) {
               <p className="text-sm text-slate-400 mt-1">Hire an agent via Xcrow on any agent page</p>
             </div>
           ) : (
-            clientJobIds.map((jobId) => (
+            [...clientJobIds].sort((a, b) => (a > b ? -1 : 1)).map((jobId) => (
               <XcrowJobCard key={jobId.toString()} jobId={jobId} role="client" onRefetch={refetchClient} />
             ))
           )}
@@ -886,7 +864,7 @@ function XcrowJobsSection({ address }: { address: `0x${string}` | undefined }) {
               <p className="text-sm text-slate-400 mt-1">Jobs will appear here when a client hires your agent</p>
             </div>
           ) : (
-            agentJobIds.map((jobId) => (
+            [...agentJobIds].sort((a, b) => (a > b ? -1 : 1)).map((jobId) => (
               <XcrowJobCard key={jobId.toString()} jobId={jobId} role="agent" onRefetch={refetchAgent} />
             ))
           )}
@@ -912,6 +890,126 @@ const STATUS_STYLES: Record<string, string> = {
   Expired:    "bg-slate-100 text-slate-500",
 };
 
+// ---------------------------------------------------------------------------
+// Smart output renderer — audit JSON gets a formatted report, plain text
+// falls back to a simple pre-wrap display.
+// ---------------------------------------------------------------------------
+
+const SEVERITY_STYLES: Record<string, string> = {
+  Critical:      "bg-red-100 text-red-700 border border-red-200",
+  High:          "bg-orange-100 text-orange-700 border border-orange-200",
+  Medium:        "bg-yellow-100 text-yellow-700 border border-yellow-200",
+  Low:           "bg-blue-100 text-blue-700 border border-blue-200",
+  Informational: "bg-slate-100 text-slate-600 border border-slate-200",
+};
+
+const VERDICT_STYLES: Record<string, string> = {
+  "Do not deploy":      "bg-red-100 text-red-700",
+  "Deploy with caution": "bg-yellow-100 text-yellow-700",
+  "Safe to deploy":     "bg-green-100 text-green-700",
+};
+
+function AuditReport({ report }: { report: { findings: any[]; summary: any } }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const { findings, summary } = report;
+  const verdictStyle = VERDICT_STYLES[summary.verdict] ?? "bg-slate-100 text-slate-600";
+  const riskPct = Math.min(100, Math.max(0, summary.overall_risk_score));
+  const riskColor = riskPct >= 75 ? "bg-red-500" : riskPct >= 50 ? "bg-yellow-500" : "bg-green-500";
+
+  return (
+    <div className="mb-3 border border-green-200 rounded-lg overflow-hidden">
+      {/* Header */}
+      <div className="bg-green-50 px-4 py-3 flex items-center justify-between gap-3">
+        <span className="text-xs font-semibold text-green-700">Audit Report</span>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${verdictStyle}`}>
+          {summary.verdict}
+        </span>
+      </div>
+
+      {/* Risk score bar */}
+      <div className="px-4 py-3 border-b border-green-100 bg-white">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs text-slate-500">Risk Score</span>
+          <span className="text-xs font-bold text-slate-700">{riskPct}/100</span>
+        </div>
+        <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+          <div className={`h-full rounded-full ${riskColor}`} style={{ width: `${riskPct}%` }} />
+        </div>
+        {summary.overview && (
+          <p className="mt-2 text-xs text-slate-600">{summary.overview}</p>
+        )}
+      </div>
+
+      {/* Findings */}
+      <div className="divide-y divide-slate-100 bg-white">
+        {findings.map((f: any) => (
+          <div key={f.id} className="px-4 py-2">
+            <button
+              className="w-full flex items-center gap-2 text-left"
+              onClick={() => setExpanded(expanded === f.id ? null : f.id)}
+            >
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${SEVERITY_STYLES[f.severity] ?? "bg-slate-100 text-slate-600"}`}>
+                {f.severity.toUpperCase()}
+              </span>
+              <span className="text-xs font-medium text-slate-800 flex-1">{f.title}</span>
+              <span className="text-[10px] text-slate-400">{f.id}</span>
+              <span className="text-slate-300 text-xs">{expanded === f.id ? "▲" : "▼"}</span>
+            </button>
+            {expanded === f.id && (
+              <div className="mt-2 space-y-1.5 pl-2 border-l-2 border-slate-100">
+                <p className="text-xs text-slate-700">{f.description}</p>
+                {f.location && (
+                  <p className="text-[11px] text-slate-400"><span className="font-medium">Location:</span> {f.location}</p>
+                )}
+                {f.recommendation && (
+                  <p className="text-[11px] text-slate-500"><span className="font-medium">Fix:</span> {f.recommendation}</p>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Counts */}
+      <div className="bg-slate-50 px-4 py-2 flex gap-3 text-[11px] text-slate-500 border-t border-slate-100">
+        {summary.critical > 0 && <span className="text-red-600 font-medium">{summary.critical} Critical</span>}
+        {summary.high > 0 && <span className="text-orange-600 font-medium">{summary.high} High</span>}
+        {summary.medium > 0 && <span>{summary.medium} Medium</span>}
+        {summary.low > 0 && <span>{summary.low} Low</span>}
+        {summary.informational > 0 && <span>{summary.informational} Info</span>}
+      </div>
+    </div>
+  );
+}
+
+function AgentOutputDisplay({ outputText, outputFiles }: { outputText: string; outputFiles: string[] | null }) {
+  // Try to parse as audit report JSON
+  let auditReport: { findings: any[]; summary: any } | null = null;
+  try {
+    const parsed = JSON.parse(outputText);
+    if (parsed?.findings && parsed?.summary) auditReport = parsed;
+  } catch {}
+
+  if (auditReport) return <AuditReport report={auditReport} />;
+
+  return (
+    <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+      <p className="text-xs font-medium text-green-700 mb-1">Agent Output</p>
+      <p className="text-sm text-slate-800 whitespace-pre-wrap">{outputText}</p>
+      {outputFiles && outputFiles.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {outputFiles.map((url, i) => (
+            <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+              className="text-xs text-green-700 underline truncate max-w-[160px]">
+              Output file {i + 1}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function XcrowJobCard({
   jobId,
   role,
@@ -935,6 +1033,37 @@ function XcrowJobCard({
   const [txErr, setTxErr] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [showCancelInput, setShowCancelInput] = useState(false);
+  const [arcadeJob, setArcadeJob] = useState<ArcadeJob | null>(null);
+
+  // Fetch task details from Supabase — poll every 5s until output arrives
+  useEffect(() => {
+    const fetchJob = async () => {
+      const { data } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("job_id", jobId.toString())
+        .single();
+      if (data) setArcadeJob(data as ArcadeJob);
+    };
+
+    fetchJob();
+
+    // Keep polling while output is not yet available and job is not settled/cancelled
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("job_id", jobId.toString())
+        .single();
+      if (data) {
+        setArcadeJob(data as ArcadeJob);
+        // Stop polling once output arrives
+        if (data.output_text || data.output_files) clearInterval(interval);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [jobId]);
 
   // Refetch after any tx confirms
   useEffect(() => { if (accept.isSuccess)  { refetchJob(); onRefetch(); } }, [accept.isSuccess]);
@@ -975,8 +1104,54 @@ function XcrowJobCard({
 
   const handleAccept = async () => {
     setTxErr(null);
-    try { await accept.acceptJob(jobId); }
-    catch (e: any) { setTxErr(e?.shortMessage || e?.message || "Failed"); }
+    try {
+      await accept.acceptJob(jobId);
+      // Fetch job data fresh from Supabase — don't rely on arcadeJob state
+      // which may not have loaded yet when the agent clicks Accept
+      const { data: freshJob } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("job_id", jobId.toString())
+        .single();
+      if (freshJob) setArcadeJob(freshJob as ArcadeJob);
+      const jobData = (freshJob as ArcadeJob | null) ?? arcadeJob;
+      // Call the agent's endpoint if one is set
+      if (jobData?.agent_endpoint) {
+        const payload = {
+          job_id: jobId.toString(),
+          task_type: jobData.task_type,
+          task_text: jobData.task_text ?? null,
+          task_files: jobData.task_files ?? [],
+          client_address: jobData.client_address,
+          agent_address: jobData.agent_address,
+        };
+        try {
+          const res = await fetch(jobData.agent_endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (res.ok) {
+            const output = await res.json();
+            // Save agent output to Supabase
+            await supabase
+              .from("jobs")
+              .update({
+                output_text: output.output_text ?? null,
+                output_files: output.output_files ?? null,
+              })
+              .eq("job_id", jobId.toString());
+            setArcadeJob((prev) =>
+              prev
+                ? { ...prev, output_text: output.output_text ?? null, output_files: output.output_files ?? null }
+                : prev
+            );
+          }
+        } catch {
+          // Agent endpoint call failed — job is still accepted on-chain
+        }
+      }
+    } catch (e: any) { setTxErr(e?.shortMessage || e?.message || "Failed"); }
   };
 
   const handleReject = async () => {
@@ -1008,7 +1183,11 @@ function XcrowJobCard({
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-semibold text-slate-900">Job #{job.jobId.toString()}</span>
+            <span className="text-sm font-semibold text-slate-900">
+              {arcadeJob?.task_text
+                ? arcadeJob.task_text.slice(0, 60) + (arcadeJob.task_text.length > 60 ? "…" : "")
+                : `Job #${job.jobId.toString()}`}
+            </span>
             <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${statusStyle}`}>
               {statusLabel}
             </span>
@@ -1032,6 +1211,37 @@ function XcrowJobCard({
           <p className="font-mono text-slate-700">{agentPayout} USDC</p>
         </div>
       </div>
+
+      {/* Task details from Supabase */}
+      {arcadeJob?.task_text && (
+        <div className="mb-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+          <p className="text-xs font-medium text-slate-500 mb-1">Task</p>
+          <p className="text-sm text-slate-800 whitespace-pre-wrap">{arcadeJob.task_text}</p>
+          {arcadeJob.task_files && arcadeJob.task_files.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {arcadeJob.task_files.map((url, i) => (
+                <a
+                  key={i}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 underline truncate max-w-[160px]"
+                >
+                  Attachment {i + 1}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Agent output from Supabase */}
+      {arcadeJob?.output_text && (
+        <AgentOutputDisplay
+          outputText={arcadeJob.output_text}
+          outputFiles={arcadeJob.output_files}
+        />
+      )}
 
       {/* CLIENT ACTIONS */}
       {role === "client" && (
@@ -1130,7 +1340,7 @@ function XcrowJobCard({
                       <div className="flex gap-2">
                         <button
                           onClick={async () => {
-                            try { await feedback.submitFeedback(jobId, reviewStars, reviewComment); }
+                            try { await feedback.submitFeedback(jobId, reviewStars, reviewComment, job.agentId, job.agentWallet, arcadeJob?.client_address ?? ""); }
                             catch (e: any) { console.error(e); }
                           }}
                           disabled={feedback.isPending || feedback.isConfirming}
