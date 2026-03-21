@@ -15,6 +15,8 @@ import {
   USDC_ADDRESS,
   USDC_ABI,
 } from "../contracts/XcrowRouter";
+import { ERC8004_REPUTATION_ADDRESS, ERC8004_REPUTATION_ABI } from "../contracts/ERC8004";
+import { supabase } from "../../supabase/client";
 import { arc } from "../arc";
 
 const USDC_DECIMALS = 6;
@@ -406,11 +408,28 @@ export function useCompleteJob() {
 // ---------------------------------------------------------------------------
 
 export function useSubmitFeedback() {
-  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const publicClient = usePublicClient({ chainId: arc.id });
+  const { writeContractAsync: xcrowWrite } = useWriteContract();
+  const { writeContractAsync: erc8004Write } = useWriteContract();
+  const [isPending, setIsPending] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-  const submitFeedback = async (jobId: bigint, stars: number, comment: string) => {
-    // Upload comment to IPFS if provided, else use empty strings
+  const submitFeedback = async (
+    jobId: bigint,
+    stars: number,
+    comment: string,
+    erc8004AgentId: bigint,
+    agentAddress: string,
+    clientAddress: string,
+  ) => {
+    setIsPending(false);
+    setIsConfirming(false);
+    setIsSuccess(false);
+    setError(null);
+
+    // Upload comment to IPFS if provided
     let feedbackURI = "";
     let feedbackHash: `0x${string}` = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -430,7 +449,6 @@ export function useSubmitFeedback() {
           if (res.ok) {
             const data = await res.json();
             feedbackURI = `ipfs://${data.IpfsHash}`;
-            // keccak256 of the comment for on-chain reference
             const enc = new TextEncoder().encode(comment);
             const digest = await crypto.subtle.digest("SHA-256", enc);
             feedbackHash = `0x${Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("")}` as `0x${string}`;
@@ -439,16 +457,58 @@ export function useSubmitFeedback() {
       }
     }
 
-    return writeContractAsync({
-      address: XCROW_ROUTER_ADDRESS,
-      abi: XCROW_ROUTER_ABI,
-      functionName: "submitFeedback",
-      args: [jobId, BigInt(stars), 0, "rating", feedbackURI, feedbackHash],
-      chainId: arc.id,
-    });
+    try {
+      // Step 1: XcrowRouter.submitFeedback
+      setIsPending(true);
+      const xcrowHash = await xcrowWrite({
+        address: XCROW_ROUTER_ADDRESS,
+        abi: XCROW_ROUTER_ABI,
+        functionName: "submitFeedback",
+        args: [jobId, BigInt(stars), 0, "rating", feedbackURI, feedbackHash],
+        chainId: arc.id,
+      });
+      setIsPending(false);
+      setIsConfirming(true);
+      await publicClient!.waitForTransactionReceipt({ hash: xcrowHash });
+
+      // Step 2: ERC-8004 ReputationRegistry.giveFeedback (only if agent has ERC-8004 identity)
+      if (erc8004AgentId > BigInt(0)) {
+        setIsPending(true);
+        setIsConfirming(false);
+        const erc8004Hash = await erc8004Write({
+          address: ERC8004_REPUTATION_ADDRESS,
+          abi: ERC8004_REPUTATION_ABI,
+          functionName: "giveFeedback",
+          args: [erc8004AgentId, BigInt(stars), 0, "rating", "", "", feedbackURI, feedbackHash],
+          chainId: arc.id,
+        });
+        setIsPending(false);
+        setIsConfirming(true);
+        await publicClient!.waitForTransactionReceipt({ hash: erc8004Hash });
+      }
+
+      setIsConfirming(false);
+
+      // Step 3: Cache in Supabase reviews table
+      await supabase.from("reviews").insert({
+        job_id: jobId.toString(),
+        agent_id: erc8004AgentId.toString(),
+        agent_address: agentAddress.toLowerCase(),
+        stars,
+        comment_uri: feedbackURI || null,
+        client_address: clientAddress.toLowerCase(),
+      });
+
+      setIsSuccess(true);
+    } catch (e: any) {
+      setIsPending(false);
+      setIsConfirming(false);
+      setError(e);
+      throw e;
+    }
   };
 
-  return { submitFeedback, isPending, isConfirming, isSuccess, error, hash };
+  return { submitFeedback, isPending, isConfirming, isSuccess, error };
 }
 
 // ---------------------------------------------------------------------------
