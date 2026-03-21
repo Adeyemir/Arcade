@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import { Loader2, Briefcase, XCircle, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAccount } from "wagmi";
-import { keccak256, encodePacked } from "viem";
 import {
   useHireAgent,
   useCancelJob,
@@ -71,7 +70,7 @@ export function JobLifecycle({
       // Save to Supabase now that we have the real jobId
       if (pendingTask.current && address) {
         const { taskText, uploadedUrls, taskType } = pendingTask.current;
-        supabase.from("jobs").insert({
+        const row = {
           job_id: hire.jobId.toString(),
           task_text: taskText || null,
           task_files: uploadedUrls.length > 0 ? uploadedUrls : null,
@@ -81,6 +80,11 @@ export function JobLifecycle({
           agent_endpoint: agentEndpoint ?? null,
           output_text: null,
           output_files: null,
+        };
+        console.log("[Xcrow] inserting job to Supabase", row);
+        supabase.from("jobs").insert(row).then(({ error }) => {
+          if (error) console.error("[Xcrow] Supabase insert failed:", error);
+          else console.log("[Xcrow] Supabase insert success for job", hire.jobId?.toString());
         });
         pendingTask.current = null;
       }
@@ -126,9 +130,7 @@ export function JobLifecycle({
         uploadedUrls.push(url);
       }
 
-      // Hash the task text for on-chain commitment
       const textForHash = taskText.trim() || taskDescription;
-      const taskHash = keccak256(encodePacked(["string"], [textForHash]));
 
       const deadline = BigInt(Math.floor(Date.now() / 1000) + deadlineSeconds);
 
