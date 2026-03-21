@@ -404,7 +404,6 @@ function AgentCard({ agentId }: { agentId: number }) {
   }
 
   const agentData = agent as any;
-  const pricePerHour = formatEther(agentData.pricePerHour);
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 hover:shadow-lg transition-shadow">
@@ -441,9 +440,6 @@ function AgentCard({ agentId }: { agentId: number }) {
                   }`}
                 >
                   {agentData.isListed ? "Listed" : "Unlisted"}
-                </span>
-                <span className="text-sm text-slate-600">
-                  {pricePerHour} ARC/hr
                 </span>
               </div>
             </div>

@@ -23,7 +23,7 @@ export default function ListAgentPage() {
     name: "",
     description: "",
     category: "",
-    pricePerHour: "",
+    minPriceUsdc: "",
     dockerImage: "",
     apiEndpoint: "",
   });
@@ -49,7 +49,7 @@ export default function ListAgentPage() {
         name: "",
         description: "",
         category: "",
-        pricePerHour: "",
+        minPriceUsdc: "",
         dockerImage: "",
         apiEndpoint: "",
       });
@@ -83,14 +83,14 @@ export default function ListAgentPage() {
     }
 
     // Validation
-    if (!formData.name || !formData.description || !formData.category || !formData.pricePerHour) {
+    if (!formData.name || !formData.description || !formData.category || !formData.minPriceUsdc) {
       setError("Please fill in all required fields");
       console.error("Missing required fields");
       return;
     }
 
-    if (parseFloat(formData.pricePerHour) <= 0) {
-      setError("Price must be greater than 0");
+    if (parseFloat(formData.minPriceUsdc) <= 0) {
+      setError("Minimum price must be greater than 0");
       console.error("Invalid price");
       return;
     }
@@ -127,6 +127,7 @@ export default function ListAgentPage() {
         capabilities: [formData.category.toLowerCase()],
         input_types: inputTypes.map((t) => t.toLowerCase()),
         output_types: outputTypes.map((t) => t.toLowerCase()),
+        min_price_usdc: formData.minPriceUsdc,
         ...(formData.dockerImage && { dockerImage: formData.dockerImage }),
         ...(formData.apiEndpoint && { apiEndpoint: formData.apiEndpoint }),
       };
@@ -148,7 +149,7 @@ export default function ListAgentPage() {
         formData.name,
         formData.description,
         formData.category,
-        formData.pricePerHour,
+        "1",
         finalMetadataURI,
         imageUrl
       );
@@ -461,33 +462,33 @@ export default function ListAgentPage() {
                 </div>
               </div>
 
-              {/* Price Per Hour */}
+              {/* Minimum Price Per Task */}
               <div>
                 <label
-                  htmlFor="pricePerHour"
+                  htmlFor="minPriceUsdc"
                   className="block text-sm font-medium text-slate-900 mb-2"
                 >
-                  Price Per Hour (ARC) <span className="text-red-500">*</span>
+                  Minimum Price Per Task (USDC) <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <input
                     type="number"
-                    id="pricePerHour"
-                    name="pricePerHour"
-                    value={formData.pricePerHour}
+                    id="minPriceUsdc"
+                    name="minPriceUsdc"
+                    value={formData.minPriceUsdc}
                     onChange={handleInputChange}
-                    placeholder="50"
-                    min="0"
+                    placeholder="5"
+                    min="0.01"
                     step="0.01"
                     className="w-full px-4 py-3 text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
                     required
                   />
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500">
-                    ARC
+                    USDC
                   </div>
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  Set a competitive price for your agent's services
+                  Clients must pay at least this amount per task via Xcrow escrow
                 </p>
               </div>
 
@@ -625,7 +626,7 @@ export default function ListAgentPage() {
                     name: "",
                     description: "",
                     category: "Trading",
-                    pricePerHour: "",
+                    minPriceUsdc: "",
                     dockerImage: "",
                     apiEndpoint: "",
                   })

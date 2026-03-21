@@ -8,7 +8,7 @@ interface Agent {
   agentId: number;
   title: string;
   description: string;
-  pricePerHour: string;
+  minPriceUsdc?: string;
   uptime?: string;
   category?: string;
   owner: string;
@@ -25,14 +25,6 @@ export function MarketplaceFeed({ agents }: MarketplaceFeedProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
-  // Price filter is opt-in — only applied once the user moves the slider
-  const [priceLimit, setPriceLimit] = useState<number | null>(null);
-
-  const maxPrice = useMemo(() => {
-    if (!agents || agents.length === 0) return 100;
-    const max = Math.max(...agents.map((a) => parseFloat(a.pricePerHour) || 0));
-    return max > 0 ? Math.ceil(max) : 100;
-  }, [agents]);
 
   const uniqueCategories = useMemo(() => {
     const categories = new Set<string>(["All"]);
@@ -54,26 +46,21 @@ export function MarketplaceFeed({ agents }: MarketplaceFeedProps) {
         const matchesSearch =
           !q ||
           agent.title.toLowerCase().includes(q) ||
-          agent.description.toLowerCase().includes(q);
+          agent.description.toLowerCase().includes(q) ||
+          (agent.category ?? "").toLowerCase().includes(q);
         const matchesCategory =
           selectedCategory === "All" || agent.category === selectedCategory;
-        const matchesPrice =
-          priceLimit === null ||
-          (parseFloat(agent.pricePerHour) || 0) <= priceLimit;
         const matchesVerified = !verifiedOnly || agent.isVerified;
-        return matchesSearch && matchesCategory && matchesPrice && matchesVerified;
+        return matchesSearch && matchesCategory && matchesVerified;
       }),
-    [agents, searchQuery, selectedCategory, priceLimit, verifiedOnly]
+    [agents, searchQuery, selectedCategory, verifiedOnly]
   );
 
   const clearFilters = () => {
     setSearchQuery("");
     setSelectedCategory("All");
-    setPriceLimit(null);
     setVerifiedOnly(false);
   };
-
-  const sliderValue = priceLimit ?? maxPrice;
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -82,7 +69,7 @@ export function MarketplaceFeed({ agents }: MarketplaceFeedProps) {
         <div className="container max-w-screen-2xl mx-auto px-6 py-16">
           <div className="max-w-3xl mx-auto text-center">
             <h1 className="text-5xl font-semibold text-slate-900 mb-4">
-              Rent Autonomous Intelligence
+              Hire Autonomous Intelligence
             </h1>
             <p className="text-lg text-slate-600 mb-8">
               Secure, trustless AI agents powered by Arc Blockchain
@@ -147,20 +134,6 @@ export function MarketplaceFeed({ agents }: MarketplaceFeedProps) {
                   ))}
                 </select>
               </div>
-              <div className="mb-6">
-                <label className="text-sm font-medium text-slate-700 mb-2 block">
-                  Max Price (ARC/hr)
-                </label>
-                <div className="space-y-2">
-                  <input type="range" min="0" max={maxPrice} value={sliderValue}
-                    onChange={(e) => setPriceLimit(parseFloat(e.target.value))}
-                    className="w-full accent-blue-600" />
-                  <div className="flex justify-between text-xs text-slate-500">
-                    <span>0 ARC</span>
-                    <span>{priceLimit === null ? "Any" : `${sliderValue} ARC`}</span>
-                  </div>
-                </div>
-              </div>
               <div className="mb-4">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={verifiedOnly}
@@ -221,18 +194,6 @@ export function MarketplaceFeed({ agents }: MarketplaceFeedProps) {
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
-              </div>
-              <div className="mb-6">
-                <label className="text-sm font-medium text-slate-700 mb-2 block">Max Price (ARC/hr)</label>
-                <div className="space-y-2">
-                  <input type="range" min="0" max={maxPrice} value={sliderValue}
-                    onChange={(e) => setPriceLimit(parseFloat(e.target.value))}
-                    className="w-full accent-blue-600" />
-                  <div className="flex justify-between text-xs text-slate-500">
-                    <span>0 ARC</span>
-                    <span>{priceLimit === null ? "Any" : `${sliderValue} ARC`}</span>
-                  </div>
-                </div>
               </div>
               <div className="mb-4">
                 <label className="flex items-center gap-2 cursor-pointer">

@@ -8,7 +8,7 @@ interface AgentCardProps {
   agentId: number;
   title: string;
   description: string;
-  pricePerHour: string;
+  minPriceUsdc?: string;
   uptime?: string;
   category?: string;
   owner: string;
@@ -62,7 +62,7 @@ export function AgentCard({
   agentId,
   title,
   description,
-  pricePerHour,
+  minPriceUsdc,
   uptime = "N/A",
   category = "General",
   owner,
@@ -140,8 +140,15 @@ export function AgentCard({
             <span className="text-emerald-600 font-medium">{uptime}</span>
           </div>
           <div className="text-right">
-            <span className="text-2xl font-bold text-slate-900">{pricePerHour}</span>
-            <span className="text-slate-500 text-sm ml-1">ARC/hr</span>
+            {minPriceUsdc ? (
+              <>
+                <span className="text-xs text-slate-500 block">from</span>
+                <span className="text-xl font-bold text-slate-900">${minPriceUsdc}</span>
+                <span className="text-slate-500 text-xs ml-1">USDC/task</span>
+              </>
+            ) : (
+              <span className="text-sm text-slate-400 italic">Ask for price</span>
+            )}
           </div>
         </div>
 
@@ -157,7 +164,7 @@ export function AgentCard({
           className="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors shadow-sm"
           asChild
         >
-          <Link href={`/agent/${agentId}`}>Rent Now</Link>
+          <Link href={`/agent/${agentId}`}>Hire Now</Link>
         </Button>
       </div>
     </div>
