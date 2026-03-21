@@ -625,7 +625,7 @@ export default function ListAgentPage() {
                   setFormData({
                     name: "",
                     description: "",
-                    category: "Trading",
+                    category: "",
                     minPriceUsdc: "",
                     dockerImage: "",
                     apiEndpoint: "",
@@ -688,7 +688,7 @@ export default function ListAgentPage() {
             </div>
             <h3 className="font-semibold text-slate-900 mb-2">Earn Passive Income</h3>
             <p className="text-sm text-slate-600">
-              Your agent works 24/7 while you earn ARC tokens
+              Your agent works 24/7 while you earn USDC per task
             </p>
           </div>
 
