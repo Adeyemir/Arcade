@@ -865,7 +865,7 @@ function XcrowJobsSection({ address }: { address: `0x${string}` | undefined }) {
               <p className="text-sm text-slate-400 mt-1">Hire an agent via Xcrow on any agent page</p>
             </div>
           ) : (
-            clientJobIds.map((jobId) => (
+            [...clientJobIds].sort((a, b) => (a > b ? -1 : 1)).map((jobId) => (
               <XcrowJobCard key={jobId.toString()} jobId={jobId} role="client" onRefetch={refetchClient} />
             ))
           )}
@@ -887,7 +887,7 @@ function XcrowJobsSection({ address }: { address: `0x${string}` | undefined }) {
               <p className="text-sm text-slate-400 mt-1">Jobs will appear here when a client hires your agent</p>
             </div>
           ) : (
-            agentJobIds.map((jobId) => (
+            [...agentJobIds].sort((a, b) => (a > b ? -1 : 1)).map((jobId) => (
               <XcrowJobCard key={jobId.toString()} jobId={jobId} role="agent" onRefetch={refetchAgent} />
             ))
           )}

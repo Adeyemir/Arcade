@@ -244,7 +244,7 @@ export type Job = {
 export function useClientJobs(address: `0x${string}` | undefined) {
   const publicClient = usePublicClient({ chainId: arc.id });
   const [jobIds, setJobIds] = useState<bigint[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   const fetch = async () => {
@@ -268,18 +268,31 @@ export function useClientJobs(address: `0x${string}` | undefined) {
         ],
       } as const;
 
-      const allIds: bigint[] = [];
+      // Build chunk ranges
+      const ranges: { from: bigint; to: bigint }[] = [];
       for (let from = DEPLOY_BLOCK; from <= latestBlock; from += CHUNK_SIZE + BigInt(1)) {
         const to = from + CHUNK_SIZE > latestBlock ? latestBlock : from + CHUNK_SIZE;
-        const logs = await publicClient.getLogs({
-          address: XCROW_ROUTER_ADDRESS,
-          event: agentHiredEvent,
-          args: { client: address },
-          fromBlock: from,
-          toBlock: to,
-        });
-        allIds.push(...logs.map((l) => (l.args as { jobId: bigint }).jobId));
+        ranges.push({ from, to });
       }
+
+      // Fetch all chunks in parallel instead of sequentially
+      const chunkResults = await Promise.all(
+        ranges.map(({ from, to }) =>
+          publicClient.getLogs({
+            address: XCROW_ROUTER_ADDRESS,
+            event: agentHiredEvent,
+            args: { client: address },
+            fromBlock: from,
+            toBlock: to,
+          })
+        )
+      );
+
+      const allIds = chunkResults
+        .flat()
+        .map((l) => (l.args as { jobId: bigint }).jobId)
+        .sort((a, b) => (a > b ? -1 : 1)); // newest (highest ID) first
+
       setJobIds(allIds);
     } catch (e: any) {
       setError(e);
