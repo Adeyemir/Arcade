@@ -247,9 +247,9 @@ export function useClientJobs(address: `0x${string}` | undefined) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  const fetch = async () => {
+  const fetch = async (showSpinner = false) => {
     if (!address || !publicClient) return;
-    setIsLoading(true);
+    if (showSpinner) setIsLoading(true);
     setError(null);
     try {
       const DEPLOY_BLOCK = BigInt(32718375); // XcrowRouter deployment block
@@ -301,7 +301,11 @@ export function useClientJobs(address: `0x${string}` | undefined) {
     }
   };
 
-  useEffect(() => { fetch(); }, [address, publicClient]);
+  useEffect(() => {
+    fetch(true); // show spinner on first load only
+    const interval = setInterval(() => fetch(false), 10000); // silent re-scan every 10s
+    return () => clearInterval(interval);
+  }, [address, publicClient]);
 
   return { jobIds, isLoading, error, refetch: fetch };
 }
