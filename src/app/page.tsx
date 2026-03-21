@@ -21,7 +21,7 @@ interface Agent {
   isListed: boolean;
 }
 
-const AGENTS_PER_PAGE = 20;
+const AGENTS_PER_PAGE = 100;
 
 export default function Home() {
   const [page, setPage] = useState(0);
