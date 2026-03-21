@@ -50,7 +50,7 @@ export function JobLifecycle({
 }: JobLifecycleProps) {
   const { address, isConnected } = useAccount();
 
-  const [amountUsdc, setAmountUsdc] = useState("");
+  const [amountUsdc, setAmountUsdc] = useState(minPriceUsdc ?? "");
   const [taskText, setTaskText] = useState("");
   const [taskFiles, setTaskFiles] = useState<File[]>([]);
   const [step, setStep] = useState<Step>("idle");
@@ -63,6 +63,11 @@ export function JobLifecycle({
     uploadedUrls: string[];
     taskType: TaskType;
   } | null>(null);
+
+  // Pre-fill with minimum price once it loads from IPFS (async)
+  useEffect(() => {
+    if (minPriceUsdc && !amountUsdc) setAmountUsdc(minPriceUsdc);
+  }, [minPriceUsdc]);
 
   const hire = useHireAgent();
   const cancel = useCancelJob();
