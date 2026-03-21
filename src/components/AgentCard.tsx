@@ -1,8 +1,10 @@
+"use client";
+
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, MessageCircle, Database, Coins, Zap, Bot } from "lucide-react";
 import { getIPFSUrl } from "@/lib/ipfs";
-import { ReputationBadge } from "@/components/ReputationBadge";
+import { useAgentStarRating } from "@/lib/supabase/useAgentStarRating";
 
 interface AgentCardProps {
   agentId: number;
@@ -14,8 +16,6 @@ interface AgentCardProps {
   owner: string;
   isVerified?: boolean;
   imageUrl?: string;
-  /** If true, show the live ERC-8004 reputation score from chain */
-  showReputation?: boolean;
 }
 
 // Category-based colors and icons
@@ -68,10 +68,10 @@ export function AgentCard({
   owner,
   isVerified = false,
   imageUrl,
-  showReputation = false,
 }: AgentCardProps) {
   const config = categoryConfig[category] || categoryConfig.General;
   const Icon = config.icon;
+  const { avgStars, reviewCount } = useAgentStarRating(owner);
 
 
   return (
@@ -152,12 +152,17 @@ export function AgentCard({
           </div>
         </div>
 
-        {/* ERC-8004 Reputation */}
-        {showReputation && (
-          <div className="pt-1">
-            <ReputationBadge agentId={BigInt(agentId)} compact />
-          </div>
-        )}
+        {/* Star Rating */}
+        <div className="pt-2 pb-1 text-center">
+          {reviewCount > 0 ? (
+            <span className="text-sm text-slate-700">
+              {[1,2,3,4,5].map(i => i <= Math.round(avgStars!) ? "★" : "☆").join("")}
+              <span className="text-xs text-slate-500 ml-1">{avgStars!.toFixed(1)} ({reviewCount})</span>
+            </span>
+          ) : (
+            <span className="text-xs text-slate-400">No reviews yet</span>
+          )}
+        </div>
 
         {/* CTA Button */}
         <Button

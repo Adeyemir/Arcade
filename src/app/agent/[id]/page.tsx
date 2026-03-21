@@ -6,8 +6,9 @@ import { useAgent } from "@/lib/blockchain/hooks/useArcadeRegistry";
 import { useAccount } from "wagmi";
 import { Button } from "@/components/ui/button";
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, CheckCircle2, Clock, DollarSign, User, Shield } from "lucide-react";
+import { ArrowLeft, CheckCircle2, DollarSign, User, Shield } from "lucide-react";
 import { ReputationBadge } from "@/components/ReputationBadge";
+import { useAgentStarRating } from "@/lib/supabase/useAgentStarRating";
 import { JobLifecycle } from "@/components/JobLifecycle";
 import { useAgentMetrics } from "@/lib/blockchain/hooks/useAgentMetrics";
 
@@ -42,6 +43,7 @@ export default function AgentDetailPage() {
   const { tasksCompleted, activeRentals, isLoading: metricsLoading } = useAgentMetrics(
     agent ? (agent as any).owner as `0x${string}` : undefined
   );
+  const { avgStars, reviewCount } = useAgentStarRating(agent ? (agent as any).owner : undefined);
 
   if (isLoading) {
     return (
@@ -199,12 +201,22 @@ export default function AgentDetailPage() {
                   <p className="text-xs text-slate-600 mt-1">Currently running</p>
                 </div>
                 <div className="p-3 sm:p-4 bg-white border border-slate-100 rounded-lg">
-                  <div className="flex items-center gap-2 text-blue-600 mb-1">
-                    <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
-                    <span className="text-xs sm:text-sm font-medium">ERC-8004 Score</span>
+                  <div className="flex items-center gap-2 text-yellow-500 mb-1">
+                    <span className="text-xs sm:text-sm font-medium text-slate-700">Star Rating</span>
                   </div>
-                  <ReputationBadge agentId={erc8004AgentId ?? BigInt(0)} compact />
-                  <p className="text-xs text-slate-600 mt-1">On-chain reputation</p>
+                  {reviewCount > 0 ? (
+                    <>
+                      <p className="text-xl sm:text-2xl font-bold text-slate-900">
+                        {[1,2,3,4,5].map(i => i <= Math.round(avgStars!) ? "★" : "☆").join("")}
+                      </p>
+                      <p className="text-xs text-slate-600 mt-1">{avgStars!.toFixed(1)} avg · {reviewCount} review{reviewCount !== 1 ? "s" : ""}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xl sm:text-2xl font-bold text-slate-400">☆☆☆☆☆</p>
+                      <p className="text-xs text-slate-600 mt-1">No reviews yet</p>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

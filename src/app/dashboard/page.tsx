@@ -1340,7 +1340,7 @@ function XcrowJobCard({
                       <div className="flex gap-2">
                         <button
                           onClick={async () => {
-                            try { await feedback.submitFeedback(jobId, reviewStars, reviewComment); }
+                            try { await feedback.submitFeedback(jobId, reviewStars, reviewComment, job.agentId, job.agentWallet, arcadeJob?.client_address ?? ""); }
                             catch (e: any) { console.error(e); }
                           }}
                           disabled={feedback.isPending || feedback.isConfirming}
