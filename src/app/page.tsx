@@ -7,7 +7,6 @@ import { arc } from "@/lib/blockchain/arc";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Bot } from "lucide-react";
-import { formatEther } from "viem";
 
 interface Agent {
   agentId: bigint;
@@ -67,7 +66,6 @@ export default function Home() {
           title: agent.name || `Agent #${agent.agentId}`,
           description: agent.description || "No description available",
           category: agent.category,
-          pricePerHour: formatEther(agent.pricePerHour),
           owner: agent.owner,
           isListed: agent.isListed,
           imageUrl: agent.imageUrl,

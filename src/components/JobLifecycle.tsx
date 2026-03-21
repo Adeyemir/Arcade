@@ -18,6 +18,8 @@ interface JobLifecycleProps {
   agentEndpoint?: string | null;
   /** Input types the agent supports e.g. ["text", "image"] */
   supportedInputTypes?: string[];
+  /** Minimum USDC amount the agent will accept per task */
+  minPriceUsdc?: string;
 }
 
 type Step = "idle" | "hiring" | "awaiting_completion" | "done";
@@ -44,6 +46,7 @@ export function JobLifecycle({
   erc8004AgentId = BigInt(0),
   agentEndpoint,
   supportedInputTypes = ["text"],
+  minPriceUsdc,
 }: JobLifecycleProps) {
   const { address, isConnected } = useAccount();
 
@@ -117,6 +120,10 @@ export function JobLifecycle({
     if (!address) return;
     if (!taskText.trim() && taskFiles.length === 0) {
       setErr("Describe what you need the agent to do.");
+      return;
+    }
+    if (minPriceUsdc && parseFloat(amountUsdc) < parseFloat(minPriceUsdc)) {
+      setErr(`Amount must be at least $${minPriceUsdc} USDC`);
       return;
     }
     setErr(null);
@@ -243,16 +250,24 @@ export function JobLifecycle({
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">
               USDC Amount
+              {minPriceUsdc && (
+                <span className="ml-1 text-slate-400">(min ${minPriceUsdc})</span>
+              )}
             </label>
             <input
               type="number"
-              min="1"
+              min={minPriceUsdc ?? "0.01"}
               step="0.01"
-              placeholder="e.g. 10"
+              placeholder={minPriceUsdc ? `Min $${minPriceUsdc}` : "e.g. 10"}
               value={amountUsdc}
               onChange={(e) => setAmountUsdc(e.target.value)}
               className="w-full px-3 py-2 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
+            {minPriceUsdc && amountUsdc && parseFloat(amountUsdc) < parseFloat(minPriceUsdc) && (
+              <p className="mt-1 text-xs text-red-500">
+                Amount must be at least ${minPriceUsdc} USDC
+              </p>
+            )}
           </div>
 
           <Button
@@ -262,7 +277,8 @@ export function JobLifecycle({
               isBusy ||
               !amountUsdc ||
               isNaN(parseFloat(amountUsdc)) ||
-              parseFloat(amountUsdc) <= 0
+              parseFloat(amountUsdc) <= 0 ||
+              (minPriceUsdc !== undefined && parseFloat(amountUsdc) < parseFloat(minPriceUsdc))
             }
           >
             <Briefcase className="mr-2 h-4 w-4" />
