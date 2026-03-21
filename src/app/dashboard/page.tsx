@@ -1129,18 +1129,27 @@ function XcrowJobCard({
     setTxErr(null);
     try {
       await accept.acceptJob(jobId);
-      // After accepting, call the agent's endpoint if one is set
-      if (arcadeJob?.agent_endpoint) {
+      // Fetch job data fresh from Supabase — don't rely on arcadeJob state
+      // which may not have loaded yet when the agent clicks Accept
+      const { data: freshJob } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("job_id", jobId.toString())
+        .single();
+      if (freshJob) setArcadeJob(freshJob as ArcadeJob);
+      const jobData = (freshJob as ArcadeJob | null) ?? arcadeJob;
+      // Call the agent's endpoint if one is set
+      if (jobData?.agent_endpoint) {
         const payload = {
           job_id: jobId.toString(),
-          task_type: arcadeJob.task_type,
-          task_text: arcadeJob.task_text ?? null,
-          task_files: arcadeJob.task_files ?? [],
-          client_address: arcadeJob.client_address,
-          agent_address: arcadeJob.agent_address,
+          task_type: jobData.task_type,
+          task_text: jobData.task_text ?? null,
+          task_files: jobData.task_files ?? [],
+          client_address: jobData.client_address,
+          agent_address: jobData.agent_address,
         };
         try {
-          const res = await fetch(arcadeJob.agent_endpoint, {
+          const res = await fetch(jobData.agent_endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
