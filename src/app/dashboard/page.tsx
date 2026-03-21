@@ -1077,7 +1077,11 @@ function XcrowJobCard({
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-semibold text-slate-900">Job #{job.jobId.toString()}</span>
+            <span className="text-sm font-semibold text-slate-900">
+              {arcadeJob?.task_text
+                ? arcadeJob.task_text.slice(0, 60) + (arcadeJob.task_text.length > 60 ? "…" : "")
+                : `Job #${job.jobId.toString()}`}
+            </span>
             <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${statusStyle}`}>
               {statusLabel}
             </span>
