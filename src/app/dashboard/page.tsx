@@ -33,6 +33,7 @@ import {
   useSubmitFeedback,
   JOB_STATUS,
 } from "@/lib/blockchain/hooks/useXcrowRouter";
+import { supabase, ArcadeJob } from "@/lib/supabase/client";
 import { AgentManageModal } from "@/components/AgentManageModal";
 import { DelistAgentModal } from "@/components/DelistAgentModal";
 import { ExtendRentalModal } from "@/components/ExtendRentalModal";
@@ -935,6 +936,17 @@ function XcrowJobCard({
   const [txErr, setTxErr] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [showCancelInput, setShowCancelInput] = useState(false);
+  const [arcadeJob, setArcadeJob] = useState<ArcadeJob | null>(null);
+
+  // Fetch task details from Supabase
+  useEffect(() => {
+    supabase
+      .from("jobs")
+      .select("*")
+      .eq("job_id", jobId.toString())
+      .single()
+      .then(({ data }) => { if (data) setArcadeJob(data as ArcadeJob); });
+  }, [jobId]);
 
   // Refetch after any tx confirms
   useEffect(() => { if (accept.isSuccess)  { refetchJob(); onRefetch(); } }, [accept.isSuccess]);
@@ -975,8 +987,45 @@ function XcrowJobCard({
 
   const handleAccept = async () => {
     setTxErr(null);
-    try { await accept.acceptJob(jobId); }
-    catch (e: any) { setTxErr(e?.shortMessage || e?.message || "Failed"); }
+    try {
+      await accept.acceptJob(jobId);
+      // After accepting, call the agent's endpoint if one is set
+      if (arcadeJob?.agent_endpoint) {
+        const payload = {
+          job_id: jobId.toString(),
+          task_type: arcadeJob.task_type,
+          task_text: arcadeJob.task_text ?? null,
+          task_files: arcadeJob.task_files ?? [],
+          client_address: arcadeJob.client_address,
+          agent_address: arcadeJob.agent_address,
+        };
+        try {
+          const res = await fetch(arcadeJob.agent_endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (res.ok) {
+            const output = await res.json();
+            // Save agent output to Supabase
+            await supabase
+              .from("jobs")
+              .update({
+                output_text: output.output_text ?? null,
+                output_files: output.output_files ?? null,
+              })
+              .eq("job_id", jobId.toString());
+            setArcadeJob((prev) =>
+              prev
+                ? { ...prev, output_text: output.output_text ?? null, output_files: output.output_files ?? null }
+                : prev
+            );
+          }
+        } catch {
+          // Agent endpoint call failed — job is still accepted on-chain
+        }
+      }
+    } catch (e: any) { setTxErr(e?.shortMessage || e?.message || "Failed"); }
   };
 
   const handleReject = async () => {
@@ -1032,6 +1081,52 @@ function XcrowJobCard({
           <p className="font-mono text-slate-700">{agentPayout} USDC</p>
         </div>
       </div>
+
+      {/* Task details from Supabase */}
+      {arcadeJob?.task_text && (
+        <div className="mb-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+          <p className="text-xs font-medium text-slate-500 mb-1">Task</p>
+          <p className="text-sm text-slate-800 whitespace-pre-wrap">{arcadeJob.task_text}</p>
+          {arcadeJob.task_files && arcadeJob.task_files.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {arcadeJob.task_files.map((url, i) => (
+                <a
+                  key={i}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 underline truncate max-w-[160px]"
+                >
+                  Attachment {i + 1}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Agent output from Supabase */}
+      {arcadeJob?.output_text && (
+        <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+          <p className="text-xs font-medium text-green-700 mb-1">Agent Output</p>
+          <p className="text-sm text-slate-800 whitespace-pre-wrap">{arcadeJob.output_text}</p>
+          {arcadeJob.output_files && arcadeJob.output_files.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {arcadeJob.output_files.map((url, i) => (
+                <a
+                  key={i}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-green-700 underline truncate max-w-[160px]"
+                >
+                  Output file {i + 1}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* CLIENT ACTIONS */}
       {role === "client" && (
