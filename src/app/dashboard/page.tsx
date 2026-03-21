@@ -913,6 +913,126 @@ const STATUS_STYLES: Record<string, string> = {
   Expired:    "bg-slate-100 text-slate-500",
 };
 
+// ---------------------------------------------------------------------------
+// Smart output renderer — audit JSON gets a formatted report, plain text
+// falls back to a simple pre-wrap display.
+// ---------------------------------------------------------------------------
+
+const SEVERITY_STYLES: Record<string, string> = {
+  Critical:      "bg-red-100 text-red-700 border border-red-200",
+  High:          "bg-orange-100 text-orange-700 border border-orange-200",
+  Medium:        "bg-yellow-100 text-yellow-700 border border-yellow-200",
+  Low:           "bg-blue-100 text-blue-700 border border-blue-200",
+  Informational: "bg-slate-100 text-slate-600 border border-slate-200",
+};
+
+const VERDICT_STYLES: Record<string, string> = {
+  "Do not deploy":      "bg-red-100 text-red-700",
+  "Deploy with caution": "bg-yellow-100 text-yellow-700",
+  "Safe to deploy":     "bg-green-100 text-green-700",
+};
+
+function AuditReport({ report }: { report: { findings: any[]; summary: any } }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const { findings, summary } = report;
+  const verdictStyle = VERDICT_STYLES[summary.verdict] ?? "bg-slate-100 text-slate-600";
+  const riskPct = Math.min(100, Math.max(0, summary.overall_risk_score));
+  const riskColor = riskPct >= 75 ? "bg-red-500" : riskPct >= 50 ? "bg-yellow-500" : "bg-green-500";
+
+  return (
+    <div className="mb-3 border border-green-200 rounded-lg overflow-hidden">
+      {/* Header */}
+      <div className="bg-green-50 px-4 py-3 flex items-center justify-between gap-3">
+        <span className="text-xs font-semibold text-green-700">Audit Report</span>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${verdictStyle}`}>
+          {summary.verdict}
+        </span>
+      </div>
+
+      {/* Risk score bar */}
+      <div className="px-4 py-3 border-b border-green-100 bg-white">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs text-slate-500">Risk Score</span>
+          <span className="text-xs font-bold text-slate-700">{riskPct}/100</span>
+        </div>
+        <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+          <div className={`h-full rounded-full ${riskColor}`} style={{ width: `${riskPct}%` }} />
+        </div>
+        {summary.overview && (
+          <p className="mt-2 text-xs text-slate-600">{summary.overview}</p>
+        )}
+      </div>
+
+      {/* Findings */}
+      <div className="divide-y divide-slate-100 bg-white">
+        {findings.map((f: any) => (
+          <div key={f.id} className="px-4 py-2">
+            <button
+              className="w-full flex items-center gap-2 text-left"
+              onClick={() => setExpanded(expanded === f.id ? null : f.id)}
+            >
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${SEVERITY_STYLES[f.severity] ?? "bg-slate-100 text-slate-600"}`}>
+                {f.severity.toUpperCase()}
+              </span>
+              <span className="text-xs font-medium text-slate-800 flex-1">{f.title}</span>
+              <span className="text-[10px] text-slate-400">{f.id}</span>
+              <span className="text-slate-300 text-xs">{expanded === f.id ? "▲" : "▼"}</span>
+            </button>
+            {expanded === f.id && (
+              <div className="mt-2 space-y-1.5 pl-2 border-l-2 border-slate-100">
+                <p className="text-xs text-slate-700">{f.description}</p>
+                {f.location && (
+                  <p className="text-[11px] text-slate-400"><span className="font-medium">Location:</span> {f.location}</p>
+                )}
+                {f.recommendation && (
+                  <p className="text-[11px] text-slate-500"><span className="font-medium">Fix:</span> {f.recommendation}</p>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Counts */}
+      <div className="bg-slate-50 px-4 py-2 flex gap-3 text-[11px] text-slate-500 border-t border-slate-100">
+        {summary.critical > 0 && <span className="text-red-600 font-medium">{summary.critical} Critical</span>}
+        {summary.high > 0 && <span className="text-orange-600 font-medium">{summary.high} High</span>}
+        {summary.medium > 0 && <span>{summary.medium} Medium</span>}
+        {summary.low > 0 && <span>{summary.low} Low</span>}
+        {summary.informational > 0 && <span>{summary.informational} Info</span>}
+      </div>
+    </div>
+  );
+}
+
+function AgentOutputDisplay({ outputText, outputFiles }: { outputText: string; outputFiles: string[] | null }) {
+  // Try to parse as audit report JSON
+  let auditReport: { findings: any[]; summary: any } | null = null;
+  try {
+    const parsed = JSON.parse(outputText);
+    if (parsed?.findings && parsed?.summary) auditReport = parsed;
+  } catch {}
+
+  if (auditReport) return <AuditReport report={auditReport} />;
+
+  return (
+    <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+      <p className="text-xs font-medium text-green-700 mb-1">Agent Output</p>
+      <p className="text-sm text-slate-800 whitespace-pre-wrap">{outputText}</p>
+      {outputFiles && outputFiles.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {outputFiles.map((url, i) => (
+            <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+              className="text-xs text-green-700 underline truncate max-w-[160px]">
+              Output file {i + 1}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function XcrowJobCard({
   jobId,
   role,
@@ -1131,25 +1251,10 @@ function XcrowJobCard({
 
       {/* Agent output from Supabase */}
       {arcadeJob?.output_text && (
-        <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-          <p className="text-xs font-medium text-green-700 mb-1">Agent Output</p>
-          <p className="text-sm text-slate-800 whitespace-pre-wrap">{arcadeJob.output_text}</p>
-          {arcadeJob.output_files && arcadeJob.output_files.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {arcadeJob.output_files.map((url, i) => (
-                <a
-                  key={i}
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-green-700 underline truncate max-w-[160px]"
-                >
-                  Output file {i + 1}
-                </a>
-              ))}
-            </div>
-          )}
-        </div>
+        <AgentOutputDisplay
+          outputText={arcadeJob.output_text}
+          outputFiles={arcadeJob.output_files}
+        />
       )}
 
       {/* CLIENT ACTIONS */}
