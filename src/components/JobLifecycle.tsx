@@ -255,15 +255,12 @@ export function JobLifecycle({
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">
               USDC Amount
-              {minPriceUsdc && (
-                <span className="ml-1 text-slate-400">(min ${minPriceUsdc})</span>
-              )}
             </label>
             <input
               type="number"
-              min={minPriceUsdc ?? "0.01"}
+              {...(minPriceUsdc ? { min: minPriceUsdc } : {})}
               step="0.01"
-              placeholder={minPriceUsdc ? `Min $${minPriceUsdc}` : "e.g. 10"}
+              placeholder={minPriceUsdc ? `Minimum ${minPriceUsdc} USDC` : "Enter amount"}
               value={amountUsdc}
               onChange={(e) => setAmountUsdc(e.target.value)}
               className="w-full px-3 py-2 text-sm text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -283,7 +280,7 @@ export function JobLifecycle({
               !amountUsdc ||
               isNaN(parseFloat(amountUsdc)) ||
               parseFloat(amountUsdc) <= 0 ||
-              (minPriceUsdc !== undefined && parseFloat(amountUsdc) < parseFloat(minPriceUsdc))
+              (!!minPriceUsdc && parseFloat(amountUsdc) < parseFloat(minPriceUsdc))
             }
           >
             <Briefcase className="mr-2 h-4 w-4" />
