@@ -938,14 +938,34 @@ function XcrowJobCard({
   const [showCancelInput, setShowCancelInput] = useState(false);
   const [arcadeJob, setArcadeJob] = useState<ArcadeJob | null>(null);
 
-  // Fetch task details from Supabase
+  // Fetch task details from Supabase — poll every 5s until output arrives
   useEffect(() => {
-    supabase
-      .from("jobs")
-      .select("*")
-      .eq("job_id", jobId.toString())
-      .single()
-      .then(({ data }) => { if (data) setArcadeJob(data as ArcadeJob); });
+    const fetchJob = async () => {
+      const { data } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("job_id", jobId.toString())
+        .single();
+      if (data) setArcadeJob(data as ArcadeJob);
+    };
+
+    fetchJob();
+
+    // Keep polling while output is not yet available and job is not settled/cancelled
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("job_id", jobId.toString())
+        .single();
+      if (data) {
+        setArcadeJob(data as ArcadeJob);
+        // Stop polling once output arrives
+        if (data.output_text || data.output_files) clearInterval(interval);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, [jobId]);
 
   // Refetch after any tx confirms
