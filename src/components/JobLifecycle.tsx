@@ -55,6 +55,12 @@ export function JobLifecycle({
   const [jobId, setJobId] = useState<bigint | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Holds task data between tx confirmation and Supabase save
+  const pendingTask = useRef<{
+    taskText: string;
+    uploadedUrls: string[];
+    taskType: TaskType;
+  } | null>(null);
 
   const hire = useHireAgent();
   const cancel = useCancelJob();
@@ -62,6 +68,22 @@ export function JobLifecycle({
   useEffect(() => {
     if (hire.jobId !== null && jobId === null) {
       setJobId(hire.jobId);
+      // Save to Supabase now that we have the real jobId
+      if (pendingTask.current && address) {
+        const { taskText, uploadedUrls, taskType } = pendingTask.current;
+        supabase.from("jobs").insert({
+          job_id: hire.jobId.toString(),
+          task_text: taskText || null,
+          task_files: uploadedUrls.length > 0 ? uploadedUrls : null,
+          task_type: taskType,
+          client_address: address.toLowerCase(),
+          agent_address: agentWallet.toLowerCase(),
+          agent_endpoint: agentEndpoint ?? null,
+          output_text: null,
+          output_files: null,
+        });
+        pendingTask.current = null;
+      }
     }
   }, [hire.jobId]);
 
@@ -110,6 +132,13 @@ export function JobLifecycle({
 
       const deadline = BigInt(Math.floor(Date.now() / 1000) + deadlineSeconds);
 
+      // Store task data in ref — useEffect saves to Supabase once jobId is confirmed
+      pendingTask.current = {
+        taskText: taskText.trim(),
+        uploadedUrls,
+        taskType: deriveTaskType(),
+      };
+
       await hire.hireAgent(
         address,
         agentWallet,
@@ -120,30 +149,6 @@ export function JobLifecycle({
       );
 
       setStep("awaiting_completion");
-
-      // Save task to Supabase once jobId is available (populated after tx confirmation)
-      const saveToSupabase = async (resolvedJobId: bigint) => {
-        await supabase.from("jobs").insert({
-          job_id: resolvedJobId.toString(),
-          task_text: taskText.trim() || null,
-          task_files: uploadedUrls.length > 0 ? uploadedUrls : null,
-          task_type: deriveTaskType(),
-          client_address: address.toLowerCase(),
-          agent_address: agentWallet.toLowerCase(),
-          agent_endpoint: agentEndpoint ?? null,
-          output_text: null,
-          output_files: null,
-        });
-      };
-
-      // Poll for jobId — it populates after tx is confirmed
-      const poll = setInterval(() => {
-        if (hire.jobId !== null) {
-          clearInterval(poll);
-          saveToSupabase(hire.jobId);
-        }
-      }, 500);
-      setTimeout(() => clearInterval(poll), 30000); // stop polling after 30s
     } catch (e: any) {
       setErr(e?.shortMessage || e?.message || "Hire failed");
       setStep("idle");
