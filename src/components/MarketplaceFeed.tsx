@@ -23,9 +23,20 @@ interface MarketplaceFeedProps {
 export function MarketplaceFeed({ agents }: MarketplaceFeedProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 100]);
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
+
+  // Derive max price from actual agent data so the slider is always relevant
+  const maxPrice = useMemo(() => {
+    if (!agents || agents.length === 0) return 100;
+    const max = Math.max(...agents.map((a) => parseFloat(a.pricePerHour) || 0));
+    return max > 0 ? Math.ceil(max) : 100;
+  }, [agents]);
+
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, maxPrice]);
+
+  // Sync upper bound if agents load after initial render
+  const effectiveMax = priceRange[1] === 100 && maxPrice !== 100 ? maxPrice : priceRange[1];
 
   // Get unique categories from all agents
   const uniqueCategories = useMemo(() => {
@@ -42,20 +53,20 @@ export function MarketplaceFeed({ agents }: MarketplaceFeedProps) {
     });
   }, [agents]);
 
-  // Filter agents based on criteria
-  const filteredAgents = agents.filter((agent) => {
+  // Filter agents — memoized so it only recalculates when inputs change
+  const filteredAgents = useMemo(() => agents.filter((agent) => {
     const matchesSearch =
+      !searchQuery ||
       agent.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       agent.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory =
       selectedCategory === "All" || agent.category === selectedCategory;
-    const matchesPrice =
-      parseInt(agent.pricePerHour) >= priceRange[0] &&
-      parseInt(agent.pricePerHour) <= priceRange[1];
+    const price = parseFloat(agent.pricePerHour) || 0;
+    const matchesPrice = price >= priceRange[0] && price <= effectiveMax;
     const matchesVerified = !verifiedOnly || agent.isVerified;
 
     return matchesSearch && matchesCategory && matchesPrice && matchesVerified;
-  });
+  }), [agents, searchQuery, selectedCategory, priceRange, effectiveMax, verifiedOnly]);
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -156,16 +167,16 @@ export function MarketplaceFeed({ agents }: MarketplaceFeedProps) {
                   <input
                     type="range"
                     min="0"
-                    max="100"
-                    value={priceRange[1]}
+                    max={maxPrice}
+                    value={effectiveMax}
                     onChange={(e) =>
-                      setPriceRange([priceRange[0], parseInt(e.target.value)])
+                      setPriceRange([priceRange[0], parseFloat(e.target.value)])
                     }
                     className="w-full accent-blue-600"
                   />
                   <div className="flex justify-between text-xs text-slate-500">
                     <span>0 ARC</span>
-                    <span>{priceRange[1]} ARC</span>
+                    <span>{effectiveMax} ARC</span>
                   </div>
                 </div>
               </div>
@@ -207,7 +218,7 @@ export function MarketplaceFeed({ agents }: MarketplaceFeedProps) {
                   onClick={() => {
                     setSearchQuery("");
                     setSelectedCategory("All");
-                    setPriceRange([0, 100]);
+                    setPriceRange([0, maxPrice]);
                     setVerifiedOnly(false);
                   }}
                   className="mt-4"
@@ -291,16 +302,16 @@ export function MarketplaceFeed({ agents }: MarketplaceFeedProps) {
                   <input
                     type="range"
                     min="0"
-                    max="100"
-                    value={priceRange[1]}
+                    max={maxPrice}
+                    value={effectiveMax}
                     onChange={(e) =>
-                      setPriceRange([priceRange[0], parseInt(e.target.value)])
+                      setPriceRange([priceRange[0], parseFloat(e.target.value)])
                     }
                     className="w-full accent-blue-600"
                   />
                   <div className="flex justify-between text-xs text-slate-500">
                     <span>0 ARC</span>
-                    <span>{priceRange[1]} ARC</span>
+                    <span>{effectiveMax} ARC</span>
                   </div>
                 </div>
               </div>
