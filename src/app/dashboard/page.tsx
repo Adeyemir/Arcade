@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useAccount } from "wagmi";
 import { formatEther } from "viem";
 import Link from "next/link";
-import { useOwnerEarnings, useAgentEarnings } from "@/lib/blockchain/hooks/useOwnerEarnings";
+import { useAgentEarnings } from "@/lib/blockchain/hooks/useOwnerEarnings";
 import {
   Bot,
   Clock,
@@ -14,7 +14,6 @@ import {
   BarChart3,
   Calendar,
   Activity,
-  Wallet,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -31,6 +30,7 @@ import {
   useSettleJob,
   useCancelJob,
   useSubmitFeedback,
+  useAgentXcrowEarnings,
   JOB_STATUS,
 } from "@/lib/blockchain/hooks/useXcrowRouter";
 import { supabase, ArcadeJob } from "@/lib/supabase/client";
@@ -38,7 +38,6 @@ import { AgentManageModal } from "@/components/AgentManageModal";
 import { DelistAgentModal } from "@/components/DelistAgentModal";
 import { ExtendRentalModal } from "@/components/ExtendRentalModal";
 import { SimpleBarChart } from "@/components/SimpleBarChart";
-import { WithdrawEarningsModal } from "@/components/WithdrawEarningsModal";
 
 // Custom hook to calculate rental statistics
 function useRentalStats(rentalIds?: string[]): [number] {
@@ -70,7 +69,7 @@ export default function DashboardPage() {
   const { address, isConnected } = useAccount();
   const [activeTab, setActiveTab] = useState<"agents" | "rentals" | "xcrow">("agents");
   const [mounted, setMounted] = useState(false);
-  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+
 
   // Fetch user's owned agents with error handling
   const {
@@ -88,8 +87,7 @@ export default function DashboardPage() {
   const ownedAgentIds = ownedAgentIdsRaw?.map(id => Number(id));
   const rentalIds = rentalIdsRaw?.map(id => id.toString());
 
-  // Get owner earnings for withdraw modal
-  const { totalEarnings } = useOwnerEarnings(address);
+
 
   // Ensure consistent server/client rendering
   useEffect(() => {
@@ -211,7 +209,6 @@ export default function DashboardPage() {
         <StatsSection
           ownedAgentIds={ownedAgentIds}
           rentalIds={rentalIds}
-          onWithdrawClick={() => setShowWithdrawModal(true)}
         />
 
         {/* Tabs */}
@@ -272,12 +269,6 @@ export default function DashboardPage() {
         {activeTab === "xcrow" && <XcrowJobsSection address={address} />}
       </div>
 
-      {/* Withdraw Earnings Modal */}
-      <WithdrawEarningsModal
-        isOpen={showWithdrawModal}
-        onClose={() => setShowWithdrawModal(false)}
-        availableBalance={totalEarnings || "0"}
-      />
     </main>
   );
 }
@@ -286,18 +277,16 @@ export default function DashboardPage() {
 function StatsSection({
   ownedAgentIds,
   rentalIds,
-  onWithdrawClick,
 }: {
   ownedAgentIds?: number[];
   rentalIds?: string[];
-  onWithdrawClick: () => void;
 }) {
   const { address } = useAccount();
   const totalAgents = ownedAgentIds?.length || 0;
   const totalRentals = rentalIds?.length || 0;
 
-  // Get real earnings from contract
-  const { totalEarnings, isLoading: earningsLoading } = useOwnerEarnings(address);
+  // Total USDC earned from settled Xcrow jobs
+  const { totalUsdc, jobCount, isLoading: earningsLoading } = useAgentXcrowEarnings(address);
 
   // Calculate active rentals
   const [activeRentals] = useRentalStats(rentalIds);
@@ -347,17 +336,9 @@ function StatsSection({
         ) : (
           <>
             <p className="text-2xl sm:text-3xl font-bold text-slate-900">
-              {parseFloat(totalEarnings).toFixed(4)}
+              {totalUsdc.toFixed(2)} <span className="text-base font-medium text-slate-500">USDC</span>
             </p>
-            <p className="text-xs text-slate-500 mt-1">ARC earned</p>
-            <Button
-              onClick={onWithdrawClick}
-              className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white text-sm py-2"
-              disabled={parseFloat(totalEarnings) === 0}
-            >
-              <Wallet className="w-4 h-4 mr-2" />
-              Withdraw Earnings
-            </Button>
+            <p className="text-xs text-slate-500 mt-1">{jobCount} job{jobCount !== 1 ? "s" : ""} completed</p>
           </>
         )}
       </div>

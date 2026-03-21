@@ -450,3 +450,69 @@ export function useSubmitFeedback() {
 
   return { submitFeedback, isPending, isConfirming, isSuccess, error, hash };
 }
+
+// ---------------------------------------------------------------------------
+// Total USDC earned by an agent wallet from settled Xcrow jobs
+// ---------------------------------------------------------------------------
+
+export function useAgentXcrowEarnings(wallet: `0x${string}` | undefined) {
+  const publicClient = usePublicClient({ chainId: arc.id });
+  const [totalUsdc, setTotalUsdc] = useState<number>(0);
+  const [jobCount, setJobCount] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!wallet || !publicClient) return;
+
+    const fetch = async () => {
+      try {
+        const jobIds = await publicClient.readContract({
+          address: XCROW_ESCROW_ADDRESS,
+          abi: XCROW_ESCROW_ABI,
+          functionName: "getAgentWalletJobs",
+          args: [wallet],
+        }) as bigint[];
+
+        if (!jobIds || jobIds.length === 0) {
+          setTotalUsdc(0);
+          setJobCount(0);
+          setIsLoading(false);
+          return;
+        }
+
+        const jobs = await Promise.all(
+          jobIds.map((id) =>
+            publicClient.readContract({
+              address: XCROW_ESCROW_ADDRESS,
+              abi: XCROW_ESCROW_ABI,
+              functionName: "getJob",
+              args: [id],
+            })
+          )
+        );
+
+        let total = BigInt(0);
+        let settled = 0;
+        for (const job of jobs as any[]) {
+          // status 4 = Settled
+          if (job.status === 4) {
+            total += BigInt(job.amount) - BigInt(job.platformFee);
+            settled++;
+          }
+        }
+        setTotalUsdc(Number(total) / 1e6);
+        setJobCount(settled);
+      } catch {
+        // silent — show 0 on error
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetch();
+    const interval = setInterval(fetch, 15000);
+    return () => clearInterval(interval);
+  }, [wallet, publicClient]);
+
+  return { totalUsdc, jobCount, isLoading };
+}
