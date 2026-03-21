@@ -15,7 +15,7 @@ export default function AgentDetailPage() {
   const params = useParams();
   const router = useRouter();
   const agentId = params.id as string;
-  const { address, isConnected } = useAccount();
+  const { address } = useAccount();
 
   const [erc8004AgentId, setErc8004AgentId] = useState<bigint | null>(null);
   const [agentEndpoint, setAgentEndpoint] = useState<string | null>(null);
@@ -300,7 +300,7 @@ export default function AgentDetailPage() {
                     </div>
                     <div className="flex items-start gap-2 text-xs sm:text-sm text-gray-600">
                       <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                      <span>Agent output verified and stored on-chain</span>
+                      <span>Agent output stored privately and delivered to client</span>
                     </div>
                   </div>
                 </div>
