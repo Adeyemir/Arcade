@@ -232,6 +232,8 @@ export type Job = {
   deadline: bigint;
   createdAt: bigint;
   settledAt: bigint;
+  proofOfWorkHash: `0x${string}`;
+  proofSubmittedAt: bigint;
   status: number;
   isCrossChain: boolean;
   destinationDomain: number;
@@ -401,6 +403,62 @@ export function useCompleteJob() {
   };
 
   return { completeJob, isPending, isConfirming, isSuccess, error, hash };
+}
+
+// ---------------------------------------------------------------------------
+// Write: agent submits proof of work (output hash on-chain)
+// ---------------------------------------------------------------------------
+
+export function useSubmitProofOfWork() {
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const submitProof = async (jobId: bigint, proofHash: `0x${string}`) => {
+    return writeContractAsync({
+      address: XCROW_ESCROW_ADDRESS,
+      abi: XCROW_ESCROW_ABI,
+      functionName: "submitProofOfWork",
+      args: [jobId, proofHash],
+      chainId: arc.id,
+    });
+  };
+
+  return { submitProof, isPending, isConfirming, isSuccess, error, hash };
+}
+
+// ---------------------------------------------------------------------------
+// Write: anyone triggers auto-settlement after PoW window elapses
+// ---------------------------------------------------------------------------
+
+export function useAutoSettle() {
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const autoSettle = async (jobId: bigint) => {
+    return writeContractAsync({
+      address: XCROW_ROUTER_ADDRESS,
+      abi: XCROW_ROUTER_ABI,
+      functionName: "autoSettleViaRouter",
+      args: [jobId],
+      chainId: arc.id,
+    });
+  };
+
+  return { autoSettle, isPending, isConfirming, isSuccess, error, hash };
+}
+
+// ---------------------------------------------------------------------------
+// Read: settlement window duration (seconds)
+// ---------------------------------------------------------------------------
+
+export function useSettlementWindow() {
+  const { data } = useReadContract({
+    address: XCROW_ESCROW_ADDRESS,
+    abi: XCROW_ESCROW_ABI,
+    functionName: "settlementWindow",
+    chainId: arc.id,
+  });
+  return (data as bigint | undefined) ?? BigInt(0);
 }
 
 // ---------------------------------------------------------------------------

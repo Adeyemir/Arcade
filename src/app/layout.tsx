@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { Web3Provider } from "@/lib/blockchain/Web3Provider";
+import { ClientProviders } from "@/components/ClientProviders";
 import { SiteHeader } from "@/components/site-header";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -19,12 +19,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className} suppressHydrationWarning>
-        <Web3Provider>
+        <ClientProviders>
           <div className="relative flex min-h-screen flex-col">
             <SiteHeader />
             <div className="flex-1">{children}</div>
           </div>
-        </Web3Provider>
+        </ClientProviders>
       </body>
     </html>
   );

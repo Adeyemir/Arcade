@@ -1,5 +1,5 @@
 export const XCROW_ROUTER_ADDRESS =
-  "0x81c3F812454B25D9696a66541788996532f89278" as const;
+  "0x2EE65b29Fb04F59263b3A902cD3205C62e3a0231" as const;
 
 export const USDC_ADDRESS =
   "0x3600000000000000000000000000000000000000" as const;
@@ -35,7 +35,7 @@ export const USDC_ABI = [
 ] as const;
 
 export const XCROW_ESCROW_ADDRESS =
-  "0x9D157b6fa143a5778c017FB233ee972387Ac1aE3" as const;
+  "0x183B77E415931335ac746e59c17E88d1279a241f" as const;
 
 export const XCROW_ESCROW_ABI = [
   // --- Read ---
@@ -60,6 +60,8 @@ export const XCROW_ESCROW_ABI = [
           { name: "deadline", type: "uint256" },
           { name: "createdAt", type: "uint256" },
           { name: "settledAt", type: "uint256" },
+          { name: "proofOfWorkHash", type: "bytes32" },
+          { name: "proofSubmittedAt", type: "uint256" },
           { name: "status", type: "uint8" },
           { name: "isCrossChain", type: "bool" },
           { name: "destinationDomain", type: "uint32" },
@@ -112,6 +114,30 @@ export const XCROW_ESCROW_ABI = [
     stateMutability: "nonpayable",
     inputs: [{ name: "jobId", type: "uint256" }],
     outputs: [],
+  },
+  {
+    name: "submitProofOfWork",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "jobId", type: "uint256" },
+      { name: "proofHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "autoSettle",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "jobId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    name: "settlementWindow",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
   },
   // --- Events ---
   {
@@ -228,6 +254,13 @@ export const XCROW_ROUTER_ABI = [
       { name: "jobId", type: "uint256" },
       { name: "reason", type: "string" },
     ],
+    outputs: [],
+  },
+  {
+    name: "autoSettleViaRouter",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "jobId", type: "uint256" }],
     outputs: [],
   },
   {
