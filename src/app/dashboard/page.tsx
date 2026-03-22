@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, usePublicClient } from "wagmi";
 import { formatEther, keccak256, toHex } from "viem";
 import Link from "next/link";
 import { useAgentEarnings } from "@/lib/blockchain/hooks/useOwnerEarnings";
@@ -1078,6 +1078,7 @@ function XcrowJobCard({
   role: "client" | "agent";
   onRefetch: () => void;
 }) {
+  const publicClient = usePublicClient({ chainId: 5042002 });
   const { job, isLoading, error, refetch: refetchJob } = useJob(jobId);
   const accept = useAcceptJob();
   const reject = useRejectJob();
@@ -1229,13 +1230,15 @@ function XcrowJobCard({
   const handleComplete = async () => {
     setTxErr(null);
     try {
-      await complete.completeJob(jobId);
-      // After marking complete, submit proof of work if output exists
+      const txHash = await complete.completeJob(jobId);
+      // Wait for completeJob tx to be confirmed before submitting PoW
       const outputText = arcadeJob?.output_text;
-      if (outputText) {
-        const proofHash = keccak256(toHex(outputText));
-        try { await pow.submitProof(jobId, proofHash); }
-        catch { /* PoW submission failed — agent can retry manually */ }
+      if (outputText && publicClient && txHash) {
+        try {
+          await publicClient.waitForTransactionReceipt({ hash: txHash });
+          const proofHash = keccak256(toHex(outputText));
+          await pow.submitProof(jobId, proofHash);
+        } catch { /* PoW submission failed — agent can retry via button */ }
       }
     } catch (e: any) { setTxErr(e?.shortMessage || e?.message || "Failed"); }
   };
