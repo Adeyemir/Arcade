@@ -1,5 +1,5 @@
 export const XCROW_ROUTER_ADDRESS =
-  "0x2EE65b29Fb04F59263b3A902cD3205C62e3a0231" as const;
+  "0x868da313070B2EBC9C4C5134245256200Abb65a7" as const;
 
 export const USDC_ADDRESS =
   "0x3600000000000000000000000000000000000000" as const;
@@ -35,7 +35,7 @@ export const USDC_ABI = [
 ] as const;
 
 export const XCROW_ESCROW_ADDRESS =
-  "0x183B77E415931335ac746e59c17E88d1279a241f" as const;
+  "0x7b46c2e787814a814F198663Cb47Fc9a9991CB2B" as const;
 
 export const XCROW_ESCROW_ABI = [
   // --- Read ---
@@ -92,13 +92,6 @@ export const XCROW_ESCROW_ABI = [
   },
   // --- Write ---
   {
-    name: "acceptJob",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "jobId", type: "uint256" }],
-    outputs: [],
-  },
-  {
     name: "rejectJob",
     type: "function",
     stateMutability: "nonpayable",
@@ -148,14 +141,6 @@ export const XCROW_ESCROW_ABI = [
       { name: "agentId", type: "uint256", indexed: true },
       { name: "client", type: "address", indexed: true },
       { name: "amount", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    name: "JobAccepted",
-    type: "event",
-    inputs: [
-      { name: "jobId", type: "uint256", indexed: true },
-      { name: "agentId", type: "uint256", indexed: false },
     ],
   },
   {

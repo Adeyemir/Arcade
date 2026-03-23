@@ -367,23 +367,6 @@ export function useRejectJob() {
   return { rejectJob, isPending, isConfirming, isSuccess, error, hash };
 }
 
-export function useAcceptJob() {
-  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
-
-  const acceptJob = async (jobId: bigint) => {
-    return writeContractAsync({
-      address: XCROW_ESCROW_ADDRESS,
-      abi: XCROW_ESCROW_ABI,
-      functionName: "acceptJob",
-      args: [jobId],
-      chainId: arc.id,
-    });
-  };
-
-  return { acceptJob, isPending, isConfirming, isSuccess, error, hash };
-}
-
 // ---------------------------------------------------------------------------
 // Write: agent marks job complete
 // ---------------------------------------------------------------------------

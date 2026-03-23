@@ -24,7 +24,6 @@ import {
   useClientJobs,
   useAgentJobs,
   useJob,
-  useAcceptJob,
   useRejectJob,
   useCompleteJob,
   useSettleJob,
@@ -1080,7 +1079,6 @@ function XcrowJobCard({
 }) {
   const publicClient = usePublicClient({ chainId: 5042002 });
   const { job, isLoading, error, refetch: refetchJob } = useJob(jobId);
-  const accept = useAcceptJob();
   const reject = useRejectJob();
   const complete = useCompleteJob();
   const settle = useSettleJob();
@@ -1129,7 +1127,6 @@ function XcrowJobCard({
   }, [jobId]);
 
   // Refetch after any tx confirms
-  useEffect(() => { if (accept.isSuccess)  { refetchJob(); onRefetch(); } }, [accept.isSuccess]);
   useEffect(() => { if (reject.isSuccess)  { refetchJob(); onRefetch(); } }, [reject.isSuccess]);
   useEffect(() => { if (complete.isSuccess) { refetchJob(); onRefetch(); } }, [complete.isSuccess]);
   useEffect(() => { if (settle.isSuccess)  { refetchJob(); onRefetch(); } }, [settle.isSuccess]);
@@ -1161,65 +1158,12 @@ function XcrowJobCard({
   const agentPayout = ((Number(job.amount) - Number(job.platformFee)) / 1e6).toFixed(2);
   const deadline = new Date(Number(job.deadline) * 1000).toLocaleString();
   const isBusy =
-    accept.isPending || accept.isConfirming ||
     reject.isPending || reject.isConfirming ||
     complete.isPending || complete.isConfirming ||
     settle.isPending || settle.isConfirming ||
     cancel.isPending || cancel.isConfirming ||
     pow.isPending || pow.isConfirming ||
     autoSettleHook.isPending || autoSettleHook.isConfirming;
-
-  const handleAccept = async () => {
-    setTxErr(null);
-    try {
-      await accept.acceptJob(jobId);
-      // Fetch job data fresh from Supabase — don't rely on arcadeJob state
-      // which may not have loaded yet when the agent clicks Accept
-      const { data: freshJob } = await supabase
-        .from("jobs")
-        .select("*")
-        .eq("job_id", jobId.toString())
-        .single();
-      if (freshJob) setArcadeJob(freshJob as ArcadeJob);
-      const jobData = (freshJob as ArcadeJob | null) ?? arcadeJob;
-      // Call the agent's endpoint if one is set
-      if (jobData?.agent_endpoint) {
-        const payload = {
-          job_id: jobId.toString(),
-          task_type: jobData.task_type,
-          task_text: jobData.task_text ?? null,
-          task_files: jobData.task_files ?? [],
-          client_address: jobData.client_address,
-          agent_address: jobData.agent_address,
-        };
-        try {
-          const res = await fetch(jobData.agent_endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          if (res.ok) {
-            const output = await res.json();
-            // Save agent output to Supabase
-            await supabase
-              .from("jobs")
-              .update({
-                output_text: output.output_text ?? null,
-                output_files: output.output_files ?? null,
-              })
-              .eq("job_id", jobId.toString());
-            setArcadeJob((prev) =>
-              prev
-                ? { ...prev, output_text: output.output_text ?? null, output_files: output.output_files ?? null }
-                : prev
-            );
-          }
-        } catch {
-          // Agent endpoint call failed — job is still accepted on-chain
-        }
-      }
-    } catch (e: any) { setTxErr(e?.shortMessage || e?.message || "Failed"); }
-  };
 
   const handleReject = async () => {
     setTxErr(null);
@@ -1339,17 +1283,22 @@ function XcrowJobCard({
       {/* CLIENT ACTIONS */}
       {role === "client" && (
         <div className="pt-2 border-t border-slate-100 space-y-2">
-          {/* Status 0: can cancel and get refund */}
-          {job.status === 0 && !showCancelInput && (
-            <button
-              onClick={() => setShowCancelInput(true)}
-              disabled={isBusy}
-              className="w-full py-2 text-sm font-medium text-red-600 border border-red-200 hover:bg-red-50 rounded-lg transition-colors"
-            >
-              Cancel Job &amp; Get Refund
-            </button>
+          {/* Status 2: InProgress — agent is working, client can cancel */}
+          {job.status === 2 && !showCancelInput && (
+            <div className="space-y-2">
+              <div className="py-2 text-sm text-center text-blue-700 bg-blue-50 border border-blue-200 rounded-lg">
+                Agent is working on this job…
+              </div>
+              <button
+                onClick={() => setShowCancelInput(true)}
+                disabled={isBusy}
+                className="w-full py-2 text-sm font-medium text-red-600 border border-red-200 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                Cancel Job &amp; Get Refund
+              </button>
+            </div>
           )}
-          {job.status === 0 && showCancelInput && (
+          {job.status === 2 && showCancelInput && (
             <div className="space-y-2">
               <textarea
                 rows={2}
@@ -1373,13 +1322,6 @@ function XcrowJobCard({
                   Back
                 </button>
               </div>
-            </div>
-          )}
-
-          {/* Status 1/2: job accepted or in progress — client waiting */}
-          {(job.status === 1 || job.status === 2) && (
-            <div className="py-2 text-sm text-center text-blue-700 bg-blue-50 border border-blue-200 rounded-lg">
-              Agent is working on this job…
             </div>
           )}
 
@@ -1477,25 +1419,7 @@ function XcrowJobCard({
       {/* AGENT ACTIONS */}
       {role === "agent" && (
         <div className="flex gap-2 pt-2 border-t border-slate-100">
-          {job.status === 0 && (
-            <>
-              <button
-                onClick={handleAccept}
-                disabled={isBusy}
-                className="flex-1 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg transition-colors"
-              >
-                {accept.isPending || accept.isConfirming ? "Accepting…" : "Accept"}
-              </button>
-              <button
-                onClick={handleReject}
-                disabled={isBusy}
-                className="flex-1 py-2 text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 rounded-lg transition-colors"
-              >
-                {reject.isPending || reject.isConfirming ? "Rejecting…" : "Reject"}
-              </button>
-            </>
-          )}
-          {(job.status === 1 || job.status === 2) && (
+          {job.status === 2 && (
             <button
               onClick={handleComplete}
               disabled={isBusy}
