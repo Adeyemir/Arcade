@@ -1,25 +1,22 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useAccount, usePublicClient } from "wagmi";
-import { formatEther, keccak256, toHex } from "viem";
+import { keccak256, toHex } from "viem";
 import Link from "next/link";
 import { useAgentEarnings } from "@/lib/blockchain/hooks/useOwnerEarnings";
 import {
   Bot,
-  Clock,
   DollarSign,
   ExternalLink,
   Settings,
   BarChart3,
-  Calendar,
   Activity,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ConnectWallet } from "@/components/ConnectWallet";
 import { useOwnerAgents, useAgent } from "@/lib/blockchain/hooks/useArcadeRegistry";
-import { useUserRentals, useRental, type Rental } from "@/lib/blockchain/hooks/useRentalManager";
 import {
   useClientJobs,
   useAgentJobs,
@@ -38,38 +35,11 @@ import {
 import { supabase, ArcadeJob } from "@/lib/supabase/client";
 import { AgentManageModal } from "@/components/AgentManageModal";
 import { DelistAgentModal } from "@/components/DelistAgentModal";
-import { ExtendRentalModal } from "@/components/ExtendRentalModal";
 import { SimpleBarChart } from "@/components/SimpleBarChart";
-
-// Custom hook to calculate rental statistics
-function useRentalStats(rentalIds?: string[]): [number] {
-  const [activeRentals, setActiveRentals] = useState(0);
-
-  // Fetch all rentals
-  const rentals = useMemo(() => {
-    if (!rentalIds || rentalIds.length === 0) return [];
-    return rentalIds;
-  }, [rentalIds]);
-
-  useEffect(() => {
-    if (!rentals || rentals.length === 0) {
-      setActiveRentals(0);
-      return;
-    }
-
-    // This is a simplified calculation
-    // In production, you'd fetch each rental and check isActive status
-    const active = 0; // Would need to fetch and check each rental's isActive status
-
-    setActiveRentals(active);
-  }, [rentals]);
-
-  return [activeRentals];
-}
 
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();
-  const [activeTab, setActiveTab] = useState<"agents" | "rentals" | "xcrow">("agents");
+  const [activeTab, setActiveTab] = useState<"agents" | "xcrow">("agents");
   const [mounted, setMounted] = useState(false);
 
 
@@ -79,15 +49,8 @@ export default function DashboardPage() {
     error: agentsError
   } = useOwnerAgents(address);
 
-  // Fetch user's rentals with error handling
-  const {
-    data: rentalIdsRaw,
-    error: rentalsError
-  } = useUserRentals(address);
-
   // Convert BigInt arrays to number/string arrays immediately to avoid serialization issues
   const ownedAgentIds = ownedAgentIdsRaw?.map(id => Number(id));
-  const rentalIds = rentalIdsRaw?.map(id => id.toString());
 
 
 
@@ -116,16 +79,9 @@ export default function DashboardPage() {
   }
 
   // Error state (blockchain read errors) — only show if wallet is connected
-  if (address && (agentsError || rentalsError)) {
+  if (address && agentsError) {
     console.error('Dashboard data fetch error:');
-    if (agentsError) {
-      console.error('Agents error:', agentsError.message || agentsError);
-      console.error('Full error:', agentsError);
-    }
-    if (rentalsError) {
-      console.error('Rentals error:', rentalsError.message || rentalsError);
-      console.error('Full error:', rentalsError);
-    }
+    console.error('Agents error:', agentsError.message || agentsError);
 
     return (
       <main className="min-h-screen bg-slate-50 py-8">
@@ -142,21 +98,12 @@ export default function DashboardPage() {
             <p className="text-slate-600 mb-2">
               There was an error connecting to the blockchain.
             </p>
-            {(agentsError || rentalsError) && (
-              <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200 text-left max-w-2xl mx-auto">
-                <p className="text-xs font-mono text-slate-700 mb-2">Error details:</p>
-                {agentsError && (
-                  <p className="text-xs font-mono text-red-600 mb-1">
-                    Agents: {agentsError.message || String(agentsError)}
-                  </p>
-                )}
-                {rentalsError && (
-                  <p className="text-xs font-mono text-red-600">
-                    Rentals: {rentalsError.message || String(rentalsError)}
-                  </p>
-                )}
-              </div>
-            )}
+            <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200 text-left max-w-2xl mx-auto">
+              <p className="text-xs font-mono text-slate-700 mb-2">Error details:</p>
+              <p className="text-xs font-mono text-red-600 mb-1">
+                {agentsError.message || String(agentsError)}
+              </p>
+            </div>
             <p className="text-sm text-slate-500 mt-4 mb-6">
               Please check your network connection and contract addresses.
             </p>
@@ -203,14 +150,13 @@ export default function DashboardPage() {
             My Dashboard
           </h1>
           <p className="text-sm sm:text-base text-slate-600">
-            Manage your agents and rental activity
+            Manage your agents and Xcrow jobs
           </p>
         </div>
 
         {/* Stats Cards */}
         <StatsSection
           ownedAgentIds={ownedAgentIds}
-          rentalIds={rentalIds}
         />
 
         {/* Tabs */}
@@ -225,16 +171,6 @@ export default function DashboardPage() {
               }`}
             >
               My Agents ({ownedAgentIds?.length || 0})
-            </button>
-            <button
-              onClick={() => setActiveTab("rentals")}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeTab === "rentals"
-                  ? "bg-blue-600 text-white"
-                  : "text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              My Rentals ({rentalIds?.length || 0})
             </button>
             <button
               onClick={() => setActiveTab("xcrow")}
@@ -267,7 +203,6 @@ export default function DashboardPage() {
         {activeTab === "agents" && (
           <MyAgentsSection ownedAgentIds={ownedAgentIds} />
         )}
-        {activeTab === "rentals" && <MyRentalsSection rentalIds={rentalIds} />}
         {activeTab === "xcrow" && <XcrowJobsSection address={address} />}
       </div>
 
@@ -278,23 +213,17 @@ export default function DashboardPage() {
 // Stats Section Component
 function StatsSection({
   ownedAgentIds,
-  rentalIds,
 }: {
   ownedAgentIds?: number[];
-  rentalIds?: string[];
 }) {
   const { address } = useAccount();
   const totalAgents = ownedAgentIds?.length || 0;
-  const totalRentals = rentalIds?.length || 0;
 
   // Total USDC earned from settled Xcrow jobs
   const { totalUsdc, jobCount, isLoading: earningsLoading } = useAgentXcrowEarnings(address);
 
-  // Calculate active rentals
-  const [activeRentals] = useRentalStats(rentalIds);
-
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
       {/* Total Agents */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6">
         <div className="flex items-center justify-between mb-2">
@@ -305,24 +234,14 @@ function StatsSection({
         <p className="text-xs text-slate-500 mt-1">Agents you own</p>
       </div>
 
-      {/* Active Rentals */}
+      {/* Xcrow Jobs */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-slate-600">Active Rentals</span>
+          <span className="text-sm text-slate-600">Xcrow Jobs</span>
           <Activity className="w-5 h-5 text-emerald-600" />
         </div>
-        <p className="text-2xl sm:text-3xl font-bold text-slate-900">{activeRentals}</p>
-        <p className="text-xs text-slate-500 mt-1">Currently renting</p>
-      </div>
-
-      {/* Total Rentals */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-slate-600">Total Rentals</span>
-          <Calendar className="w-5 h-5 text-purple-600" />
-        </div>
-        <p className="text-2xl sm:text-3xl font-bold text-slate-900">{totalRentals}</p>
-        <p className="text-xs text-slate-500 mt-1">All time</p>
+        <p className="text-2xl sm:text-3xl font-bold text-slate-900">{earningsLoading ? "…" : jobCount}</p>
+        <p className="text-xs text-slate-500 mt-1">Jobs completed</p>
       </div>
 
       {/* Total Revenue */}
@@ -340,7 +259,7 @@ function StatsSection({
             <p className="text-2xl sm:text-3xl font-bold text-slate-900">
               {totalUsdc.toFixed(2)} <span className="text-base font-medium text-slate-500">USDC</span>
             </p>
-            <p className="text-xs text-slate-500 mt-1">{jobCount} job{jobCount !== 1 ? "s" : ""} completed</p>
+            <p className="text-xs text-slate-500 mt-1">From settled jobs</p>
           </>
         )}
       </div>
@@ -535,254 +454,6 @@ function AgentCard({ agentId }: { agentId: number }) {
           agentName={agentData.name}
           isOpen={showDelistModal}
           onClose={() => setShowDelistModal(false)}
-          onSuccess={() => refetch()}
-        />
-      )}
-    </div>
-  );
-}
-
-// My Rentals Section Component
-function MyRentalsSection({ rentalIds }: { rentalIds?: string[] }) {
-  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "expired" | "completed">("all");
-  const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest");
-
-  if (!rentalIds || rentalIds.length === 0) {
-    return (
-      <div className="bg-white border border-slate-200 rounded-xl p-12 text-center">
-        <Clock className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-        <h3 className="text-xl font-semibold text-slate-900 mb-2">
-          No Rentals Yet
-        </h3>
-        <p className="text-slate-600 mb-6">
-          Browse the marketplace to rent your first AI agent
-        </p>
-        <Button asChild className="bg-blue-600 hover:bg-blue-700 text-white">
-          <Link href="/">Browse Marketplace</Link>
-        </Button>
-      </div>
-    );
-  }
-
-  // Sort rental IDs (they're already strings, so parse them for comparison)
-  const sortedRentalIds = [...rentalIds].sort((a, b) => {
-    const numA = parseInt(a);
-    const numB = parseInt(b);
-    if (sortBy === "newest") {
-      return numB - numA;
-    } else {
-      return numA - numB;
-    }
-  });
-
-  return (
-    <div className="space-y-4">
-      {/* Filter and Sort Bar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4">
-        <div className="flex flex-col sm:flex-row gap-4">
-          {/* Filter by Status */}
-          <div className="flex-1">
-            <label className="text-xs font-medium text-slate-700 mb-2 block">
-              Filter by Status
-            </label>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value as any)}
-              className="w-full px-3 py-2 text-sm text-slate-900 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Rentals</option>
-              <option value="active">Active Only</option>
-              <option value="expired">Expired Only</option>
-              <option value="completed">Completed Only</option>
-            </select>
-          </div>
-
-          {/* Sort by Date */}
-          <div className="flex-1">
-            <label className="text-xs font-medium text-slate-700 mb-2 block">
-              Sort by Date
-            </label>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="w-full px-3 py-2 text-sm text-slate-900 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Rental Cards */}
-      {sortedRentalIds.map((rentalId) => (
-        <RentalCard
-          key={rentalId}
-          rentalId={rentalId}
-          filterStatus={filterStatus}
-        />
-      ))}
-    </div>
-  );
-}
-
-// Individual Rental Card Component
-function RentalCard({
-  rentalId,
-  filterStatus = "all",
-}: {
-  rentalId: string;
-  filterStatus?: "all" | "active" | "expired" | "completed";
-}) {
-  const [showExtendModal, setShowExtendModal] = useState(false);
-  const { data: rental, refetch, error } = useRental(BigInt(rentalId));
-  const { data: agent } = useAgent(rental ? Number((rental as Rental).agentId) : 0);
-
-  // Error state
-  if (error) {
-    console.error(`Failed to load rental ${rentalId}:`, error);
-    return (
-      <div className="bg-white border border-red-200 rounded-xl p-6">
-        <p className="text-sm text-red-600">Failed to load rental data</p>
-      </div>
-    );
-  }
-
-  // Loading state
-  if (!rental) {
-    return (
-      <div className="bg-white border border-slate-200 rounded-xl p-6 animate-pulse">
-        <div className="h-6 bg-slate-200 rounded w-1/3 mb-4"></div>
-        <div className="h-4 bg-slate-200 rounded w-1/2"></div>
-      </div>
-    );
-  }
-
-  const rentalData = rental as Rental;
-  const totalCost = formatEther(rentalData.totalCost);
-  const startDate = new Date(Number(rentalData.startTime) * 1000);
-  const endDate = new Date(Number(rentalData.endTime) * 1000);
-  const isActive = rentalData.isActive && !rentalData.completed;
-  const now = Date.now();
-  const hasEnded = now > endDate.getTime();
-
-  // Determine status
-  const status = isActive && !hasEnded ? "active" : hasEnded ? "expired" : "completed";
-
-  // Filter logic
-  if (filterStatus !== "all" && status !== filterStatus) {
-    return null;
-  }
-
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 hover:shadow-lg transition-shadow">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        {/* Left: Rental Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0">
-              {(agent as any)?.imageUrl ? (
-                <img
-                  src={(agent as any).imageUrl}
-                  alt={(agent as any)?.name || `Agent #${rentalData.agentId.toString()}`}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <span className="text-white font-bold text-sm sm:text-base">
-                  {(agent as any)?.name?.charAt(0).toUpperCase() || 'A'}
-                </span>
-              )}
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-base sm:text-lg font-semibold text-slate-900">
-                {(agent as any)?.name || `Agent #${rentalData.agentId.toString()}`}
-              </h3>
-              {(agent as any)?.category && (
-                <p className="text-xs text-slate-500 mt-0.5">{(agent as any).category}</p>
-              )}
-              <div className="flex items-center gap-2 mt-1">
-                <span
-                  className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                    isActive && !hasEnded
-                      ? "bg-emerald-100 text-emerald-700"
-                      : hasEnded
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-slate-100 text-slate-700"
-                  }`}
-                >
-                  {isActive && !hasEnded
-                    ? "Active"
-                    : hasEnded
-                    ? "Expired"
-                    : "Completed"}
-                </span>
-                <span className="text-sm text-slate-600">
-                  {rentalData.hoursRented.toString()}h rental
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Rental Details */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-            <div>
-              <p className="text-slate-500 mb-1">Start Time</p>
-              <p className="text-slate-900 font-medium">
-                {startDate.toLocaleString()}
-              </p>
-            </div>
-            <div>
-              <p className="text-slate-500 mb-1">End Time</p>
-              <p className="text-slate-900 font-medium">
-                {endDate.toLocaleString()}
-              </p>
-            </div>
-            <div>
-              <p className="text-slate-500 mb-1">Total Cost</p>
-              <p className="text-slate-900 font-medium">{totalCost} ARC</p>
-            </div>
-            <div>
-              <p className="text-slate-500 mb-1">Rental ID</p>
-              <p className="text-slate-900 font-mono text-xs">
-                #{rentalId}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Right: Actions */}
-        <div className="flex sm:flex-col gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            asChild
-            className="flex-1 sm:flex-none text-xs sm:text-sm"
-          >
-            <Link href={`/agent/${rentalData.agentId.toString()}`}>
-              <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5" />
-              View Agent
-            </Link>
-          </Button>
-          {isActive && !hasEnded && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowExtendModal(true)}
-              className="flex-1 sm:flex-none text-xs sm:text-sm text-amber-700 border-amber-200 hover:bg-amber-50"
-            >
-              <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5" />
-              Extend
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Extend Rental Modal */}
-      {showExtendModal && (
-        <ExtendRentalModal
-          agentId={rentalData.agentId}
-          currentEndTime={endDate}
-          onClose={() => setShowExtendModal(false)}
           onSuccess={() => refetch()}
         />
       )}
@@ -1164,12 +835,6 @@ function XcrowJobCard({
     cancel.isPending || cancel.isConfirming ||
     pow.isPending || pow.isConfirming ||
     autoSettleHook.isPending || autoSettleHook.isConfirming;
-
-  const handleReject = async () => {
-    setTxErr(null);
-    try { await reject.rejectJob(jobId); }
-    catch (e: any) { setTxErr(e?.shortMessage || e?.message || "Failed"); }
-  };
 
   const handleComplete = async () => {
     setTxErr(null);

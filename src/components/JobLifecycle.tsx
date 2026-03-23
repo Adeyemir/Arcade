@@ -90,9 +90,49 @@ export function JobLifecycle({
           output_files: null,
         };
         console.log("[Xcrow] inserting job to Supabase", row);
-        supabase.from("jobs").insert(row).then(({ error }) => {
-          if (error) console.error("[Xcrow] Supabase insert failed:", error);
-          else console.log("[Xcrow] Supabase insert success for job", hire.jobId?.toString());
+        supabase.from("jobs").insert(row).then(async ({ error }) => {
+          if (error) {
+            console.error("[Xcrow] Supabase insert failed:", error);
+            return;
+          }
+          console.log("[Xcrow] Supabase insert success for job", hire.jobId?.toString());
+
+          // Call the agent's HTTP endpoint to execute the task
+          if (agentEndpoint) {
+            console.log("[Xcrow] Calling agent endpoint:", agentEndpoint);
+            try {
+              const res = await fetch(agentEndpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  job_id: hire.jobId?.toString(),
+                  task_text: taskText,
+                  task_files: uploadedUrls.length > 0 ? uploadedUrls : null,
+                  task_type: taskType,
+                  client_address: address?.toLowerCase(),
+                  agent_address: agentWallet.toLowerCase(),
+                }),
+              });
+              if (res.ok) {
+                const result = await res.json();
+                console.log("[Xcrow] Agent endpoint response:", result);
+                // Save agent output to Supabase
+                const outputText = result.output_text || result.output || result.result || null;
+                const outputFiles = result.output_files || null;
+                if (outputText || outputFiles) {
+                  await supabase
+                    .from("jobs")
+                    .update({ output_text: outputText, output_files: outputFiles })
+                    .eq("job_id", hire.jobId?.toString());
+                  console.log("[Xcrow] Agent output saved to Supabase");
+                }
+              } else {
+                console.error("[Xcrow] Agent endpoint returned", res.status);
+              }
+            } catch (endpointErr) {
+              console.error("[Xcrow] Agent endpoint call failed:", endpointErr);
+            }
+          }
         });
         pendingTask.current = null;
       }
