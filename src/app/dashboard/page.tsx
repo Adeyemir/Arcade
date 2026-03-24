@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAccount, usePublicClient } from "wagmi";
 import { keccak256, toHex } from "viem";
 import Link from "next/link";
@@ -766,6 +766,7 @@ function XcrowJobCard({
   const [cancelReason, setCancelReason] = useState("");
   const [showCancelInput, setShowCancelInput] = useState(false);
   const [arcadeJob, setArcadeJob] = useState<ArcadeJob | null>(null);
+  const autoCompleteTriggered = useRef(false);
 
   // Fetch task details from Supabase — poll every 5s until output arrives
   useEffect(() => {
@@ -806,6 +807,38 @@ function XcrowJobCard({
   useEffect(() => { if (autoSettleHook.isSuccess) { refetchJob(); onRefetch(); } }, [autoSettleHook.isSuccess]);
   useEffect(() => { if (feedback.isSuccess) { setReviewSubmitted(true); setShowReviewForm(false); } }, [feedback.isSuccess]);
 
+  // Auto-complete + submit PoW when agent output arrives (agent-side only)
+  useEffect(() => {
+    if (
+      role !== "agent" ||
+      !arcadeJob?.output_text ||
+      !job ||
+      job.status !== 2 || // InProgress
+      autoCompleteTriggered.current ||
+      complete.isPending || complete.isConfirming ||
+      pow.isPending || pow.isConfirming
+    ) return;
+
+    autoCompleteTriggered.current = true;
+
+    (async () => {
+      try {
+        console.log("[Xcrow] Auto-completing job", jobId.toString());
+        const txHash = await complete.completeJob(jobId);
+        if (txHash && publicClient) {
+          await publicClient.waitForTransactionReceipt({ hash: txHash });
+          const proofHash = keccak256(toHex(arcadeJob.output_text!));
+          console.log("[Xcrow] Auto-submitting PoW for job", jobId.toString());
+          await pow.submitProof(jobId, proofHash);
+        }
+      } catch (e: any) {
+        console.error("[Xcrow] Auto-complete failed:", e);
+        setTxErr(e?.shortMessage || e?.message || "Auto-complete failed");
+        autoCompleteTriggered.current = false; // Allow retry
+      }
+    })();
+  }, [arcadeJob?.output_text, job?.status, role]);
+
   if (isLoading) {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-6 animate-pulse">
@@ -835,22 +868,6 @@ function XcrowJobCard({
     cancel.isPending || cancel.isConfirming ||
     pow.isPending || pow.isConfirming ||
     autoSettleHook.isPending || autoSettleHook.isConfirming;
-
-  const handleComplete = async () => {
-    setTxErr(null);
-    try {
-      const txHash = await complete.completeJob(jobId);
-      // Wait for completeJob tx to be confirmed before submitting PoW
-      const outputText = arcadeJob?.output_text;
-      if (outputText && publicClient && txHash) {
-        try {
-          await publicClient.waitForTransactionReceipt({ hash: txHash });
-          const proofHash = keccak256(toHex(outputText));
-          await pow.submitProof(jobId, proofHash);
-        } catch { /* PoW submission failed — agent can retry via button */ }
-      }
-    } catch (e: any) { setTxErr(e?.shortMessage || e?.message || "Failed"); }
-  };
 
   const handleSubmitProof = async () => {
     setTxErr(null);
@@ -1085,13 +1102,19 @@ function XcrowJobCard({
       {role === "agent" && (
         <div className="flex gap-2 pt-2 border-t border-slate-100">
           {job.status === 2 && (
-            <button
-              onClick={handleComplete}
-              disabled={isBusy}
-              className="flex-1 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-lg transition-colors"
-            >
-              {complete.isPending || complete.isConfirming ? "Completing…" : "Mark as Complete"}
-            </button>
+            arcadeJob?.output_text ? (
+              <div className="flex-1 py-2 text-sm text-center text-blue-700 bg-blue-50 border border-blue-200 rounded-lg">
+                {complete.isPending || complete.isConfirming
+                  ? "Auto-completing…"
+                  : pow.isPending || pow.isConfirming
+                  ? "Submitting proof…"
+                  : "Waiting for agent output…"}
+              </div>
+            ) : (
+              <div className="flex-1 py-2 text-sm text-center text-slate-600 bg-slate-50 border border-slate-200 rounded-lg">
+                Agent is executing task…
+              </div>
+            )
           )}
           {job.status === 3 && (
             <div className="flex-1 space-y-2">
