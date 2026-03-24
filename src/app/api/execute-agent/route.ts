@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createHmac } from "crypto";
+import { createPublicClient, createWalletClient, http, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { arc } from "@/lib/blockchain/arc";
+import {
+  XCROW_ROUTER_ABI,
+  XCROW_ROUTER_ADDRESS,
+  XCROW_ESCROW_ABI,
+  XCROW_ESCROW_ADDRESS,
+} from "@/lib/blockchain/contracts/XcrowRouter";
 import type { OutputType, OutputMetadata } from "@/lib/supabase/client";
 
 const supabase = createClient(
@@ -10,6 +19,17 @@ const supabase = createClient(
 
 const MAX_ATTEMPTS = 3;
 const HMAC_SECRET = process.env.ARCADE_HMAC_SECRET;
+
+const publicClient = createPublicClient({ chain: arc, transport: http() });
+
+function getWalletClient() {
+  const pk = process.env.ARC_PRIVATE_KEY;
+  if (!pk) throw new Error("ARC_PRIVATE_KEY not set");
+  const account = privateKeyToAccount(
+    (pk.startsWith("0x") ? pk : `0x${pk}`) as Hex
+  );
+  return createWalletClient({ account, chain: arc, transport: http() });
+}
 
 /** Sign a request body with HMAC-SHA256 */
 function signPayload(body: string, timestamp: number): string {
@@ -207,6 +227,40 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // --- Server-side auto-complete + settle ---
+    // Agent delivered output → complete the job → settle immediately
+    let settleTxHash: string | undefined;
+    try {
+      const wallet = getWalletClient();
+      const jobIdBigInt = BigInt(job_id);
+
+      // 1. Complete the job
+      console.log(`[execute-agent] Auto-completing job ${job_id}`);
+      const completeTx = await wallet.writeContract({
+        address: XCROW_ESCROW_ADDRESS,
+        abi: XCROW_ESCROW_ABI,
+        functionName: "completeJob",
+        args: [jobIdBigInt],
+      });
+      await publicClient.waitForTransactionReceipt({ hash: completeTx });
+      console.log(`[execute-agent] Job ${job_id} completed: ${completeTx}`);
+
+      // 2. Settle immediately (same chain, no hook data)
+      console.log(`[execute-agent] Auto-settling job ${job_id}`);
+      const settleTx = await wallet.writeContract({
+        address: XCROW_ROUTER_ADDRESS,
+        abi: XCROW_ROUTER_ABI,
+        functionName: "settleAndPay",
+        args: [jobIdBigInt, 0, "0x"],
+      });
+      await publicClient.waitForTransactionReceipt({ hash: settleTx });
+      settleTxHash = settleTx;
+      console.log(`[execute-agent] Job ${job_id} settled: ${settleTx}`);
+    } catch (settleErr: any) {
+      // Non-fatal — output was saved, settlement can be retried manually
+      console.error(`[execute-agent] Auto-settle failed for job ${job_id}:`, settleErr?.shortMessage || settleErr?.message);
+    }
+
     return NextResponse.json({
       status: "ok",
       output_type: outputType,
@@ -214,6 +268,7 @@ export async function POST(req: NextRequest) {
       output_files: outputFiles,
       output_metadata: outputMetadata,
       attempts,
+      settle_tx: settleTxHash,
     });
   } catch (err: any) {
     console.error("[execute-agent] Unhandled error:", err);

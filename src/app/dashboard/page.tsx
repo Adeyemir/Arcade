@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useAccount, usePublicClient } from "wagmi";
-import { keccak256, toHex } from "viem";
+import { useState, useEffect } from "react";
+import { useAccount } from "wagmi";
 import Link from "next/link";
 import { useAgentEarnings } from "@/lib/blockchain/hooks/useOwnerEarnings";
 import {
@@ -21,32 +20,16 @@ import {
   useClientJobs,
   useAgentJobs,
   useJob,
-  useRejectJob,
-  useCompleteJob,
-  useSettleJob,
   useCancelJob,
   useSubmitFeedback,
-  useSubmitProofOfWork,
-  useAutoSettle,
-  useSettlementWindow,
   useDisputeJob,
   useAgentXcrowEarnings,
-  CCTP_DOMAINS,
   JOB_STATUS,
 } from "@/lib/blockchain/hooks/useXcrowRouter";
 import { supabase, ArcadeJob } from "@/lib/supabase/client";
 import { AgentManageModal } from "@/components/AgentManageModal";
 import { DelistAgentModal } from "@/components/DelistAgentModal";
 import { SimpleBarChart } from "@/components/SimpleBarChart";
-
-/** Build a canonical proof-of-work hash covering all output fields */
-function buildProofHash(job: ArcadeJob): `0x${string}` {
-  const parts: string[] = [];
-  if (job.output_text) parts.push(job.output_text);
-  if (job.output_files?.length) parts.push(JSON.stringify(job.output_files));
-  if (job.output_metadata) parts.push(JSON.stringify(job.output_metadata));
-  return keccak256(toHex(parts.join("|")));
-}
 
 /** Whether the job has any output ready */
 function hasOutput(job: ArcadeJob | null): boolean {
@@ -769,62 +752,6 @@ function AgentOutputDisplay({ job }: { job: ArcadeJob }) {
   );
 }
 
-function ProofOfWorkStatus({
-  proofSubmittedAt,
-  settlementWindow,
-  onAutoSettle,
-  isBusy,
-  isSettling,
-}: {
-  proofSubmittedAt: bigint;
-  settlementWindow: bigint;
-  onAutoSettle: () => void;
-  isBusy: boolean;
-  isSettling: boolean;
-}) {
-  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const unlockTime = Number(proofSubmittedAt) + Number(settlementWindow);
-  const remaining = Math.max(0, unlockTime - now);
-  const canClaim = remaining === 0;
-
-  const hours = Math.floor(remaining / 3600);
-  const minutes = Math.floor((remaining % 3600) / 60);
-  const seconds = remaining % 60;
-
-  if (canClaim) {
-    return (
-      <div className="space-y-2">
-        <div className="py-2 text-sm text-center text-green-700 bg-green-50 border border-green-200 rounded-lg">
-          Settlement window elapsed — claim your payment
-        </div>
-        <button
-          onClick={onAutoSettle}
-          disabled={isBusy}
-          className="w-full py-2 text-sm font-medium bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white rounded-lg transition-colors"
-        >
-          {isSettling ? "Claiming…" : "Claim Payment"}
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="py-2 px-3 text-sm text-center text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg">
-      <p className="font-medium mb-1">Proof submitted — auto-settlement in</p>
-      <p className="text-lg font-bold font-mono">
-        {hours.toString().padStart(2, "0")}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")}
-      </p>
-      <p className="text-xs text-indigo-500 mt-1">Client can still release payment early or dispute</p>
-    </div>
-  );
-}
-
 function XcrowJobCard({
   jobId,
   role,
@@ -834,17 +761,10 @@ function XcrowJobCard({
   role: "client" | "agent";
   onRefetch: () => void;
 }) {
-  const publicClient = usePublicClient({ chainId: 5042002 });
   const { job, isLoading, error, refetch: refetchJob } = useJob(jobId);
-  const reject = useRejectJob();
-  const complete = useCompleteJob();
-  const settle = useSettleJob();
   const cancel = useCancelJob();
   const feedback = useSubmitFeedback();
-  const pow = useSubmitProofOfWork();
-  const autoSettleHook = useAutoSettle();
   const dispute = useDisputeJob();
-  const settlementWindow = useSettlementWindow();
   const [reviewStars, setReviewStars] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [showReviewForm, setShowReviewForm] = useState(false);
@@ -854,9 +774,7 @@ function XcrowJobCard({
   const [showCancelInput, setShowCancelInput] = useState(false);
   const [disputeReason, setDisputeReason] = useState("");
   const [showDisputeInput, setShowDisputeInput] = useState(false);
-  const [settleDomain, setSettleDomain] = useState<number>(0);
   const [arcadeJob, setArcadeJob] = useState<ArcadeJob | null>(null);
-  const autoCompleteTriggered = useRef(false);
 
   // Fetch task details from Supabase — poll every 5s until output arrives
   useEffect(() => {
@@ -889,46 +807,9 @@ function XcrowJobCard({
   }, [jobId]);
 
   // Refetch after any tx confirms
-  useEffect(() => { if (reject.isSuccess)  { refetchJob(); onRefetch(); } }, [reject.isSuccess]);
-  useEffect(() => { if (complete.isSuccess) { refetchJob(); onRefetch(); } }, [complete.isSuccess]);
-  useEffect(() => { if (settle.isSuccess)  { refetchJob(); onRefetch(); } }, [settle.isSuccess]);
   useEffect(() => { if (cancel.isSuccess)  { refetchJob(); onRefetch(); } }, [cancel.isSuccess]);
-  useEffect(() => { if (pow.isSuccess)     { refetchJob(); onRefetch(); } }, [pow.isSuccess]);
-  useEffect(() => { if (autoSettleHook.isSuccess) { refetchJob(); onRefetch(); } }, [autoSettleHook.isSuccess]);
   useEffect(() => { if (dispute.isSuccess) { refetchJob(); onRefetch(); setShowDisputeInput(false); } }, [dispute.isSuccess]);
   useEffect(() => { if (feedback.isSuccess) { setReviewSubmitted(true); setShowReviewForm(false); } }, [feedback.isSuccess]);
-
-  // Auto-complete + submit PoW when agent output arrives (agent-side only)
-  useEffect(() => {
-    if (
-      role !== "agent" ||
-      !hasOutput(arcadeJob) ||
-      !job ||
-      job.status !== 2 || // InProgress
-      autoCompleteTriggered.current ||
-      complete.isPending || complete.isConfirming ||
-      pow.isPending || pow.isConfirming
-    ) return;
-
-    autoCompleteTriggered.current = true;
-
-    (async () => {
-      try {
-        console.log("[Xcrow] Auto-completing job", jobId.toString());
-        const txHash = await complete.completeJob(jobId);
-        if (txHash && publicClient) {
-          await publicClient.waitForTransactionReceipt({ hash: txHash });
-          const proofHash = buildProofHash(arcadeJob!);
-          console.log("[Xcrow] Auto-submitting PoW for job", jobId.toString());
-          await pow.submitProof(jobId, proofHash);
-        }
-      } catch (e: any) {
-        console.error("[Xcrow] Auto-complete failed:", e);
-        setTxErr(e?.shortMessage || e?.message || "Auto-complete failed");
-        autoCompleteTriggered.current = false; // Allow retry
-      }
-    })();
-  }, [arcadeJob?.output_text, arcadeJob?.output_files, job?.status, role]);
 
   if (isLoading) {
     return (
@@ -953,34 +834,8 @@ function XcrowJobCard({
   const agentPayout = ((Number(job.amount) - Number(job.platformFee)) / 1e6).toFixed(2);
   const deadline = new Date(Number(job.deadline) * 1000).toLocaleString();
   const isBusy =
-    reject.isPending || reject.isConfirming ||
-    complete.isPending || complete.isConfirming ||
-    settle.isPending || settle.isConfirming ||
     cancel.isPending || cancel.isConfirming ||
-    pow.isPending || pow.isConfirming ||
-    autoSettleHook.isPending || autoSettleHook.isConfirming ||
     dispute.isPending || dispute.isConfirming;
-
-  const handleSubmitProof = async () => {
-    setTxErr(null);
-    if (!hasOutput(arcadeJob)) { setTxErr("No output to hash — complete the job first"); return; }
-    try {
-      const proofHash = buildProofHash(arcadeJob!);
-      await pow.submitProof(jobId, proofHash);
-    } catch (e: any) { setTxErr(e?.shortMessage || e?.message || "Failed"); }
-  };
-
-  const handleAutoSettle = async () => {
-    setTxErr(null);
-    try { await autoSettleHook.autoSettle(jobId); }
-    catch (e: any) { setTxErr(e?.shortMessage || e?.message || "Failed"); }
-  };
-
-  const handleSettle = async () => {
-    setTxErr(null);
-    try { await settle.settleJob(jobId, settleDomain); }
-    catch (e: any) { setTxErr(e?.shortMessage || e?.message || "Failed"); }
-  };
 
   const handleCancel = async () => {
     setTxErr(null);
@@ -1131,43 +986,12 @@ function XcrowJobCard({
             </div>
           )}
 
-          {/* Status 3: agent marked complete — release payment or dispute */}
+          {/* Status 3: completed — settling automatically, client can dispute */}
           {job.status === 3 && (
             <div className="space-y-2">
-              {/* Destination chain selector */}
-              <div>
-                <label className="block text-[10px] font-medium text-slate-500 mb-1 uppercase tracking-wide">
-                  Payout destination
-                </label>
-                <select
-                  value={settleDomain}
-                  onChange={(e) => setSettleDomain(Number(e.target.value))}
-                  disabled={isBusy}
-                  className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  {Object.entries(CCTP_DOMAINS).map(([domain, info]) => (
-                    <option key={domain} value={domain}>
-                      {info.label}{info.crossChain ? " (cross-chain via CCTP)" : ""}
-                    </option>
-                  ))}
-                </select>
+              <div className="py-2 text-sm text-center text-blue-700 bg-blue-50 border border-blue-200 rounded-lg">
+                Agent delivered — settling payment automatically…
               </div>
-              <button
-                onClick={handleSettle}
-                disabled={isBusy}
-                className="w-full py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-lg transition-colors"
-              >
-                {settle.isPending || settle.isConfirming
-                  ? "Releasing…"
-                  : settleDomain === 0
-                  ? `Release Payment · ${agentPayout} USDC to agent`
-                  : `Release Payment · ${agentPayout} USDC via CCTP`}
-              </button>
-              {job.proofSubmittedAt > BigInt(0) && (
-                <div className="py-2 px-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg">
-                  Proof of work submitted — payment will auto-release if not disputed within the settlement window.
-                </div>
-              )}
               {/* Dispute button + form */}
               {!showDisputeInput ? (
                 <button
@@ -1299,17 +1123,13 @@ function XcrowJobCard({
         </div>
       )}
 
-      {/* AGENT ACTIONS */}
+      {/* AGENT STATUS */}
       {role === "agent" && (
         <div className="flex gap-2 pt-2 border-t border-slate-100">
           {job.status === 2 && (
             hasOutput(arcadeJob) ? (
               <div className="flex-1 py-2 text-sm text-center text-blue-700 bg-blue-50 border border-blue-200 rounded-lg">
-                {complete.isPending || complete.isConfirming
-                  ? "Auto-completing…"
-                  : pow.isPending || pow.isConfirming
-                  ? "Submitting proof…"
-                  : "Waiting for settlement…"}
+                Output delivered — settling payment…
               </div>
             ) : (
               <div className="flex-1 py-2 text-sm text-center text-slate-600 bg-slate-50 border border-slate-200 rounded-lg">
@@ -1318,29 +1138,8 @@ function XcrowJobCard({
             )
           )}
           {job.status === 3 && (
-            <div className="flex-1 space-y-2">
-              {job.proofSubmittedAt === BigInt(0) ? (
-                <>
-                  <div className="py-2 text-sm text-center text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">
-                    Done — submit proof to start auto-settlement timer
-                  </div>
-                  <button
-                    onClick={handleSubmitProof}
-                    disabled={isBusy || !hasOutput(arcadeJob)}
-                    className="w-full py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-lg transition-colors"
-                  >
-                    {pow.isPending || pow.isConfirming ? "Submitting Proof…" : "Submit Proof of Work"}
-                  </button>
-                </>
-              ) : (
-                <ProofOfWorkStatus
-                  proofSubmittedAt={job.proofSubmittedAt}
-                  settlementWindow={settlementWindow}
-                  onAutoSettle={handleAutoSettle}
-                  isBusy={isBusy}
-                  isSettling={autoSettleHook.isPending || autoSettleHook.isConfirming}
-                />
-              )}
+            <div className="flex-1 py-2 text-sm text-center text-blue-700 bg-blue-50 border border-blue-200 rounded-lg">
+              Job completed — payment settling…
             </div>
           )}
           {job.status === 4 && (
