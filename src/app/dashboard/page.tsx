@@ -37,6 +37,21 @@ import { AgentManageModal } from "@/components/AgentManageModal";
 import { DelistAgentModal } from "@/components/DelistAgentModal";
 import { SimpleBarChart } from "@/components/SimpleBarChart";
 
+/** Build a canonical proof-of-work hash covering all output fields */
+function buildProofHash(job: ArcadeJob): `0x${string}` {
+  const parts: string[] = [];
+  if (job.output_text) parts.push(job.output_text);
+  if (job.output_files?.length) parts.push(JSON.stringify(job.output_files));
+  if (job.output_metadata) parts.push(JSON.stringify(job.output_metadata));
+  return keccak256(toHex(parts.join("|")));
+}
+
+/** Whether the job has any output ready */
+function hasOutput(job: ArcadeJob | null): boolean {
+  if (!job) return false;
+  return !!(job.output_text || (job.output_files && job.output_files.length > 0));
+}
+
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();
   const [activeTab, setActiveTab] = useState<"agents" | "xcrow">("agents");
@@ -655,29 +670,98 @@ function AuditReport({ report }: { report: { findings: any[]; summary: any } }) 
   );
 }
 
-function AgentOutputDisplay({ outputText, outputFiles }: { outputText: string; outputFiles: string[] | null }) {
-  // Try to parse as audit report JSON
-  let auditReport: { findings: any[]; summary: any } | null = null;
-  try {
-    const parsed = JSON.parse(outputText);
-    if (parsed?.findings && parsed?.summary) auditReport = parsed;
-  } catch {}
+function AgentOutputDisplay({ job }: { job: ArcadeJob }) {
+  const { output_type, output_text, output_files, output_metadata } = job;
+  const labels = output_metadata?.labels as string[] | undefined;
 
-  if (auditReport) return <AuditReport report={auditReport} />;
+  // Audit report special case (legacy JSON format)
+  if (output_text) {
+    try {
+      const parsed = JSON.parse(output_text);
+      if (parsed?.findings && parsed?.summary) return <AuditReport report={parsed} />;
+    } catch {}
+  }
 
   return (
-    <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-      <p className="text-xs font-medium text-green-700 mb-1">Agent Output</p>
-      <p className="text-sm text-slate-800 whitespace-pre-wrap">{outputText}</p>
-      {outputFiles && outputFiles.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {outputFiles.map((url, i) => (
+    <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg space-y-2">
+      <p className="text-xs font-medium text-green-700">
+        Agent Output
+        {output_type !== "text" && (
+          <span className="ml-1.5 px-1.5 py-0.5 bg-green-100 rounded text-[10px] uppercase tracking-wide">
+            {output_type}
+          </span>
+        )}
+      </p>
+
+      {/* Code output */}
+      {output_type === "code" && output_text && (
+        <pre className="p-3 bg-slate-900 text-green-300 text-xs rounded-lg overflow-x-auto">
+          <code>{output_text}</code>
+        </pre>
+      )}
+
+      {/* JSON output */}
+      {output_type === "json" && output_text && (
+        <pre className="p-3 bg-slate-50 border border-slate-200 text-xs text-slate-800 rounded-lg overflow-x-auto">
+          {(() => { try { return JSON.stringify(JSON.parse(output_text), null, 2); } catch { return output_text; } })()}
+        </pre>
+      )}
+
+      {/* Plain text output (for text, file, media types that also have text) */}
+      {output_type !== "code" && output_type !== "json" && output_text && (
+        <p className="text-sm text-slate-800 whitespace-pre-wrap">{output_text}</p>
+      )}
+
+      {/* Media output — images, video, audio */}
+      {output_files && output_files.length > 0 && output_type === "media" && (
+        <div className="grid gap-2">
+          {output_files.map((url, i) => {
+            const mime = (output_metadata?.mimeTypes as string[] | undefined)?.[i] ?? "";
+            const label = labels?.[i] ?? `Output ${i + 1}`;
+            if (mime.startsWith("image/") || /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(url)) {
+              return (
+                <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                  <img src={url} alt={label} className="max-w-full max-h-64 rounded-lg border border-green-200" />
+                </a>
+              );
+            }
+            if (mime.startsWith("video/") || /\.(mp4|webm|mov)$/i.test(url)) {
+              return (
+                <video key={i} controls className="max-w-full max-h-64 rounded-lg">
+                  <source src={url} type={mime || undefined} />
+                </video>
+              );
+            }
+            if (mime.startsWith("audio/") || /\.(mp3|wav|ogg)$/i.test(url)) {
+              return <audio key={i} controls src={url} className="w-full" />;
+            }
+            return (
+              <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                className="text-xs text-green-700 underline truncate max-w-[200px]">
+                {label}
+              </a>
+            );
+          })}
+        </div>
+      )}
+
+      {/* File downloads (non-media) */}
+      {output_files && output_files.length > 0 && output_type !== "media" && (
+        <div className="flex flex-wrap gap-2">
+          {output_files.map((url, i) => (
             <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-              className="text-xs text-green-700 underline truncate max-w-[160px]">
-              Output file {i + 1}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs text-green-700 bg-green-100 hover:bg-green-200 rounded-md transition-colors truncate max-w-[200px]">
+              {labels?.[i] ?? `File ${i + 1}`}
             </a>
           ))}
         </div>
+      )}
+
+      {/* Language badge for code */}
+      {output_type === "code" && output_metadata?.language && (
+        <p className="text-[10px] text-slate-500 uppercase tracking-wide">
+          Language: {output_metadata.language as string}
+        </p>
       )}
     </div>
   );
@@ -811,7 +895,7 @@ function XcrowJobCard({
   useEffect(() => {
     if (
       role !== "agent" ||
-      !arcadeJob?.output_text ||
+      !hasOutput(arcadeJob) ||
       !job ||
       job.status !== 2 || // InProgress
       autoCompleteTriggered.current ||
@@ -827,7 +911,7 @@ function XcrowJobCard({
         const txHash = await complete.completeJob(jobId);
         if (txHash && publicClient) {
           await publicClient.waitForTransactionReceipt({ hash: txHash });
-          const proofHash = keccak256(toHex(arcadeJob.output_text!));
+          const proofHash = buildProofHash(arcadeJob!);
           console.log("[Xcrow] Auto-submitting PoW for job", jobId.toString());
           await pow.submitProof(jobId, proofHash);
         }
@@ -837,7 +921,7 @@ function XcrowJobCard({
         autoCompleteTriggered.current = false; // Allow retry
       }
     })();
-  }, [arcadeJob?.output_text, job?.status, role]);
+  }, [arcadeJob?.output_text, arcadeJob?.output_files, job?.status, role]);
 
   if (isLoading) {
     return (
@@ -871,10 +955,9 @@ function XcrowJobCard({
 
   const handleSubmitProof = async () => {
     setTxErr(null);
-    const outputText = arcadeJob?.output_text;
-    if (!outputText) { setTxErr("No output to hash — complete the job first"); return; }
+    if (!hasOutput(arcadeJob)) { setTxErr("No output to hash — complete the job first"); return; }
     try {
-      const proofHash = keccak256(toHex(outputText));
+      const proofHash = buildProofHash(arcadeJob!);
       await pow.submitProof(jobId, proofHash);
     } catch (e: any) { setTxErr(e?.shortMessage || e?.message || "Failed"); }
   };
@@ -955,11 +1038,8 @@ function XcrowJobCard({
       )}
 
       {/* Agent output from Supabase */}
-      {arcadeJob?.output_text && (
-        <AgentOutputDisplay
-          outputText={arcadeJob.output_text}
-          outputFiles={arcadeJob.output_files}
-        />
+      {hasOutput(arcadeJob) && arcadeJob && (
+        <AgentOutputDisplay job={arcadeJob} />
       )}
 
       {/* CLIENT ACTIONS */}
@@ -1102,13 +1182,13 @@ function XcrowJobCard({
       {role === "agent" && (
         <div className="flex gap-2 pt-2 border-t border-slate-100">
           {job.status === 2 && (
-            arcadeJob?.output_text ? (
+            hasOutput(arcadeJob) ? (
               <div className="flex-1 py-2 text-sm text-center text-blue-700 bg-blue-50 border border-blue-200 rounded-lg">
                 {complete.isPending || complete.isConfirming
                   ? "Auto-completing…"
                   : pow.isPending || pow.isConfirming
                   ? "Submitting proof…"
-                  : "Waiting for agent output…"}
+                  : "Waiting for settlement…"}
               </div>
             ) : (
               <div className="flex-1 py-2 text-sm text-center text-slate-600 bg-slate-50 border border-slate-200 rounded-lg">
@@ -1125,7 +1205,7 @@ function XcrowJobCard({
                   </div>
                   <button
                     onClick={handleSubmitProof}
-                    disabled={isBusy || !arcadeJob?.output_text}
+                    disabled={isBusy || !hasOutput(arcadeJob)}
                     className="w-full py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-lg transition-colors"
                   >
                     {pow.isPending || pow.isConfirming ? "Submitting Proof…" : "Submit Proof of Work"}

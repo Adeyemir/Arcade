@@ -1,10 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import type { OutputType, OutputMetadata } from "@/lib/supabase/client";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
+
+/** Detect output_type from agent response fields */
+function detectOutputType(result: Record<string, unknown>): OutputType {
+  // Explicit type from agent takes priority
+  if (typeof result.output_type === "string") {
+    const t = result.output_type as string;
+    if (["text", "code", "file", "media", "json"].includes(t)) return t as OutputType;
+  }
+
+  // Heuristic detection
+  const hasFiles = Array.isArray(result.output_files ?? result.files);
+  const hasText = !!(result.output_text || result.output || result.result || result.response || result.text);
+  const hasCode = !!(result.code || result.language);
+
+  if (hasCode) return "code";
+
+  if (hasFiles) {
+    const files = (result.output_files ?? result.files) as string[];
+    const mediaExts = /\.(mp4|webm|mov|mp3|wav|ogg|png|jpg|jpeg|gif|webp|svg)$/i;
+    const allMedia = files.length > 0 && files.every((f) => mediaExts.test(f));
+    return allMedia ? "media" : "file";
+  }
+
+  if (hasText) {
+    const text = (result.output_text || result.output || result.result || result.response || result.text) as string;
+    // Try to detect JSON
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed === "object" && parsed !== null) return "json";
+    } catch {}
+  }
+
+  return "text";
+}
+
+/** Extract metadata from agent response */
+function extractMetadata(result: Record<string, unknown>): OutputMetadata | null {
+  const meta: OutputMetadata = {};
+  if (typeof result.language === "string") meta.language = result.language;
+  if (Array.isArray(result.mime_types)) meta.mimeTypes = result.mime_types;
+  if (Array.isArray(result.labels)) meta.labels = result.labels;
+  if (result.metadata && typeof result.metadata === "object") {
+    Object.assign(meta, result.metadata);
+  }
+  return Object.keys(meta).length > 0 ? meta : null;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -72,7 +119,8 @@ export async function POST(req: NextRequest) {
 
     // Normalize the response — agents may use different field names
     const outputText =
-      result.output_text || result.output || result.result || result.response || result.text || null;
+      result.output_text || result.output || result.result || result.response || result.text ||
+      (result.code ? result.code : null);  // code field treated as text content
     const outputFiles = result.output_files || result.files || null;
 
     if (!outputText && !outputFiles) {
@@ -82,10 +130,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Detect output type and extract metadata
+    const outputType = detectOutputType(result);
+    const outputMetadata = extractMetadata(result);
+
     // Save agent output to Supabase
     const { error: updateErr } = await supabase
       .from("jobs")
-      .update({ output_text: outputText, output_files: outputFiles })
+      .update({
+        output_type: outputType,
+        output_text: outputText,
+        output_files: outputFiles,
+        output_metadata: outputMetadata,
+      })
       .eq("job_id", job_id);
 
     if (updateErr) {
@@ -96,7 +153,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ status: "ok", output_text: outputText, output_files: outputFiles });
+    return NextResponse.json({
+      status: "ok",
+      output_type: outputType,
+      output_text: outputText,
+      output_files: outputFiles,
+      output_metadata: outputMetadata,
+    });
   } catch (err: any) {
     console.error("[execute-agent] Unhandled error:", err);
     return NextResponse.json(

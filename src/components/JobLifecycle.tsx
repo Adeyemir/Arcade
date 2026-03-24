@@ -86,8 +86,10 @@ export function JobLifecycle({
           client_address: address.toLowerCase(),
           agent_address: agentWallet.toLowerCase(),
           agent_endpoint: agentEndpoint ?? null,
+          output_type: "text" as const,
           output_text: null,
           output_files: null,
+          output_metadata: null,
         };
         console.log("[Xcrow] inserting job to Supabase", row);
         supabase.from("jobs").insert(row).then(async ({ error }) => {

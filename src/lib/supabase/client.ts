@@ -7,6 +7,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export type TaskType = "text" | "image" | "audio" | "video" | "file" | "multimodal";
 
+export type OutputType = "text" | "code" | "file" | "media" | "json";
+
+export interface OutputMetadata {
+  language?: string;       // for code: "python", "solidity", etc.
+  mimeTypes?: string[];    // for files/media: ["video/mp4", "image/png"]
+  labels?: string[];       // human-readable labels per output_files entry
+  [key: string]: unknown;  // extensible for future agent-specific data
+}
+
 export interface ArcadeReview {
   job_id: string;
   agent_id: string;
@@ -25,7 +34,9 @@ export interface ArcadeJob {
   client_address: string;
   agent_address: string;
   agent_endpoint: string | null;
+  output_type: OutputType;
   output_text: string | null;
   output_files: string[] | null;
+  output_metadata: OutputMetadata | null;
   created_at: string;
 }
