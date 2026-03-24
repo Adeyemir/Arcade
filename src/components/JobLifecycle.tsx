@@ -90,6 +90,9 @@ export function JobLifecycle({
           output_text: null,
           output_files: null,
           output_metadata: null,
+          execution_status: "pending" as const,
+          execution_error: null,
+          execution_attempts: 0,
         };
         console.log("[Xcrow] inserting job to Supabase", row);
         supabase.from("jobs").insert(row).then(async ({ error }) => {

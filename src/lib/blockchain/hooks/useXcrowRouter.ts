@@ -166,16 +166,26 @@ export function useHireAgent() {
 // Settle (confirm payment)
 // ---------------------------------------------------------------------------
 
+/** CCTP destination domains for cross-chain settlement */
+export const CCTP_DOMAINS = {
+  0: { label: "Same chain (Arc)", crossChain: false },
+  6: { label: "Base", crossChain: true },
+  3: { label: "Arbitrum", crossChain: true },
+  // 0 as Ethereum domain conflicts with "same chain" — use 10 for Ethereum if needed
+} as const;
+
+export type CctpDomainId = keyof typeof CCTP_DOMAINS;
+
 export function useSettleJob() {
   const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
 
-  const settleJob = async (jobId: bigint) => {
+  const settleJob = async (jobId: bigint, destinationDomain: number = 0, hookData: `0x${string}` = "0x") => {
     return writeContractAsync({
       address: XCROW_ROUTER_ADDRESS,
       abi: XCROW_ROUTER_ABI,
       functionName: "settleAndPay",
-      args: [jobId, 0, "0x"],
+      args: [jobId, destinationDomain, hookData],
       chainId: arc.id,
     });
   };
@@ -428,6 +438,27 @@ export function useAutoSettle() {
   };
 
   return { autoSettle, isPending, isConfirming, isSuccess, error, hash };
+}
+
+// ---------------------------------------------------------------------------
+// Write: client disputes a job during the settlement window
+// ---------------------------------------------------------------------------
+
+export function useDisputeJob() {
+  const { data: hash, writeContractAsync, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const disputeJob = async (jobId: bigint, reason: string) => {
+    return writeContractAsync({
+      address: XCROW_ROUTER_ADDRESS,
+      abi: XCROW_ROUTER_ABI,
+      functionName: "disputeJobViaRouter",
+      args: [jobId, reason],
+      chainId: arc.id,
+    });
+  };
+
+  return { disputeJob, isPending, isConfirming, isSuccess, error, hash };
 }
 
 // ---------------------------------------------------------------------------

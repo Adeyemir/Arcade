@@ -29,7 +29,9 @@ import {
   useSubmitProofOfWork,
   useAutoSettle,
   useSettlementWindow,
+  useDisputeJob,
   useAgentXcrowEarnings,
+  CCTP_DOMAINS,
   JOB_STATUS,
 } from "@/lib/blockchain/hooks/useXcrowRouter";
 import { supabase, ArcadeJob } from "@/lib/supabase/client";
@@ -841,6 +843,7 @@ function XcrowJobCard({
   const feedback = useSubmitFeedback();
   const pow = useSubmitProofOfWork();
   const autoSettleHook = useAutoSettle();
+  const dispute = useDisputeJob();
   const settlementWindow = useSettlementWindow();
   const [reviewStars, setReviewStars] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
@@ -849,6 +852,9 @@ function XcrowJobCard({
   const [txErr, setTxErr] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [showCancelInput, setShowCancelInput] = useState(false);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [showDisputeInput, setShowDisputeInput] = useState(false);
+  const [settleDomain, setSettleDomain] = useState<number>(0);
   const [arcadeJob, setArcadeJob] = useState<ArcadeJob | null>(null);
   const autoCompleteTriggered = useRef(false);
 
@@ -889,6 +895,7 @@ function XcrowJobCard({
   useEffect(() => { if (cancel.isSuccess)  { refetchJob(); onRefetch(); } }, [cancel.isSuccess]);
   useEffect(() => { if (pow.isSuccess)     { refetchJob(); onRefetch(); } }, [pow.isSuccess]);
   useEffect(() => { if (autoSettleHook.isSuccess) { refetchJob(); onRefetch(); } }, [autoSettleHook.isSuccess]);
+  useEffect(() => { if (dispute.isSuccess) { refetchJob(); onRefetch(); setShowDisputeInput(false); } }, [dispute.isSuccess]);
   useEffect(() => { if (feedback.isSuccess) { setReviewSubmitted(true); setShowReviewForm(false); } }, [feedback.isSuccess]);
 
   // Auto-complete + submit PoW when agent output arrives (agent-side only)
@@ -951,7 +958,8 @@ function XcrowJobCard({
     settle.isPending || settle.isConfirming ||
     cancel.isPending || cancel.isConfirming ||
     pow.isPending || pow.isConfirming ||
-    autoSettleHook.isPending || autoSettleHook.isConfirming;
+    autoSettleHook.isPending || autoSettleHook.isConfirming ||
+    dispute.isPending || dispute.isConfirming;
 
   const handleSubmitProof = async () => {
     setTxErr(null);
@@ -970,7 +978,7 @@ function XcrowJobCard({
 
   const handleSettle = async () => {
     setTxErr(null);
-    try { await settle.settleJob(jobId); }
+    try { await settle.settleJob(jobId, settleDomain); }
     catch (e: any) { setTxErr(e?.shortMessage || e?.message || "Failed"); }
   };
 
@@ -1042,6 +1050,42 @@ function XcrowJobCard({
         <AgentOutputDisplay job={arcadeJob} />
       )}
 
+      {/* Execution error + retry */}
+      {arcadeJob?.execution_status === "failed" && (
+        <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg space-y-2">
+          <p className="text-xs font-medium text-red-700">Agent execution failed</p>
+          <p className="text-xs text-red-600">{arcadeJob.execution_error}</p>
+          <p className="text-[10px] text-red-400">Attempt {arcadeJob.execution_attempts} of 3</p>
+          {arcadeJob.execution_attempts < 3 && (
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/execute-agent", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ job_id: jobId.toString(), retry: true }),
+                  });
+                  const result = await res.json();
+                  if (!res.ok) console.error("[Xcrow] Retry failed:", result);
+                } catch (e) {
+                  console.error("[Xcrow] Retry request failed:", e);
+                }
+              }}
+              className="w-full py-1.5 text-xs font-medium text-red-700 border border-red-300 rounded-lg hover:bg-red-100 transition-colors"
+            >
+              Retry execution
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Execution running indicator */}
+      {arcadeJob?.execution_status === "running" && !hasOutput(arcadeJob) && (
+        <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-xs text-blue-700 animate-pulse">Agent is processing your task…</p>
+        </div>
+      )}
+
       {/* CLIENT ACTIONS */}
       {role === "client" && (
         <div className="pt-2 border-t border-slate-100 space-y-2">
@@ -1090,16 +1134,79 @@ function XcrowJobCard({
           {/* Status 3: agent marked complete — release payment or dispute */}
           {job.status === 3 && (
             <div className="space-y-2">
+              {/* Destination chain selector */}
+              <div>
+                <label className="block text-[10px] font-medium text-slate-500 mb-1 uppercase tracking-wide">
+                  Payout destination
+                </label>
+                <select
+                  value={settleDomain}
+                  onChange={(e) => setSettleDomain(Number(e.target.value))}
+                  disabled={isBusy}
+                  className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  {Object.entries(CCTP_DOMAINS).map(([domain, info]) => (
+                    <option key={domain} value={domain}>
+                      {info.label}{info.crossChain ? " (cross-chain via CCTP)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <button
                 onClick={handleSettle}
                 disabled={isBusy}
                 className="w-full py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-lg transition-colors"
               >
-                {settle.isPending || settle.isConfirming ? "Releasing…" : `Release Payment · ${agentPayout} USDC to agent`}
+                {settle.isPending || settle.isConfirming
+                  ? "Releasing…"
+                  : settleDomain === 0
+                  ? `Release Payment · ${agentPayout} USDC to agent`
+                  : `Release Payment · ${agentPayout} USDC via CCTP`}
               </button>
               {job.proofSubmittedAt > BigInt(0) && (
                 <div className="py-2 px-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg">
                   Proof of work submitted — payment will auto-release if not disputed within the settlement window.
+                </div>
+              )}
+              {/* Dispute button + form */}
+              {!showDisputeInput ? (
+                <button
+                  onClick={() => setShowDisputeInput(true)}
+                  disabled={isBusy}
+                  className="w-full py-2 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                >
+                  Dispute Job
+                </button>
+              ) : (
+                <div className="border border-red-200 rounded-lg p-3 space-y-2 bg-red-50">
+                  <p className="text-xs font-medium text-red-700">Why are you disputing this job?</p>
+                  <textarea
+                    value={disputeReason}
+                    onChange={(e) => setDisputeReason(e.target.value)}
+                    placeholder="Describe the issue — e.g. output is wrong, incomplete, or not what was requested…"
+                    rows={3}
+                    className="w-full px-3 py-2 text-sm border border-red-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-red-500 text-slate-900 bg-white placeholder:text-slate-400"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        if (!disputeReason.trim()) { setTxErr("Please provide a reason for the dispute"); return; }
+                        setTxErr(null);
+                        try { await dispute.disputeJob(jobId, disputeReason.trim()); }
+                        catch (e: any) { setTxErr(e?.shortMessage || e?.message || "Dispute failed"); }
+                      }}
+                      disabled={isBusy || !disputeReason.trim()}
+                      className="flex-1 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                    >
+                      {dispute.isPending || dispute.isConfirming ? "Submitting…" : "Submit Dispute"}
+                    </button>
+                    <button
+                      onClick={() => { setShowDisputeInput(false); setDisputeReason(""); }}
+                      className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-100"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1169,10 +1276,24 @@ function XcrowJobCard({
             </div>
           )}
 
+          {/* Status 5: disputed */}
+          {job.status === 5 && (
+            <div className="py-2 px-3 text-sm text-center text-red-700 bg-red-50 border border-red-200 rounded-lg">
+              Job disputed — awaiting resolution by platform owner
+            </div>
+          )}
+
           {/* Status 6: cancelled */}
           {job.status === 6 && (
             <div className="py-2 text-sm text-center text-slate-600 bg-slate-50 border border-slate-200 rounded-lg">
               Job cancelled · {amountUsdc} USDC refunded
+            </div>
+          )}
+
+          {/* Status 7: refunded */}
+          {job.status === 7 && (
+            <div className="py-2 text-sm text-center text-slate-600 bg-slate-50 border border-slate-200 rounded-lg">
+              Job refunded · {amountUsdc} USDC returned to client
             </div>
           )}
         </div>
@@ -1227,9 +1348,19 @@ function XcrowJobCard({
               Payment received ✓
             </div>
           )}
+          {job.status === 5 && (
+            <div className="flex-1 py-2 text-sm text-center text-red-700 bg-red-50 border border-red-200 rounded-lg">
+              Job disputed by client — awaiting resolution
+            </div>
+          )}
           {job.status === 6 && (
             <div className="flex-1 py-2 text-sm text-center text-slate-500 bg-slate-50 border border-slate-200 rounded-lg">
               Job rejected — client refunded
+            </div>
+          )}
+          {job.status === 7 && (
+            <div className="flex-1 py-2 text-sm text-center text-slate-500 bg-slate-50 border border-slate-200 rounded-lg">
+              Job refunded to client
             </div>
           )}
         </div>

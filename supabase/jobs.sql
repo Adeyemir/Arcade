@@ -8,16 +8,22 @@ create table if not exists jobs (
   client_address  text not null,
   agent_address   text not null,
   agent_endpoint  text,
-  output_type     text not null default 'text',   -- text | code | file | media | json
-  output_text     text,
-  output_files    jsonb,
-  output_metadata jsonb,                          -- language, mime types, labels, etc.
-  created_at      timestamp with time zone default now()
+  output_type       text not null default 'text',   -- text | code | file | media | json
+  output_text       text,
+  output_files      jsonb,
+  output_metadata   jsonb,                          -- language, mime types, labels, etc.
+  execution_status  text not null default 'pending', -- pending | running | completed | failed
+  execution_error   text,                            -- error message if execution failed
+  execution_attempts int not null default 0,
+  created_at        timestamp with time zone default now()
 );
 
 -- Migration: add output_type and output_metadata to existing tables
 alter table jobs add column if not exists output_type text not null default 'text';
 alter table jobs add column if not exists output_metadata jsonb;
+alter table jobs add column if not exists execution_status text not null default 'pending';
+alter table jobs add column if not exists execution_error text;
+alter table jobs add column if not exists execution_attempts int not null default 0;
 
 -- Enable RLS
 alter table jobs enable row level security;

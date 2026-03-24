@@ -26,6 +26,8 @@ export interface ArcadeReview {
   created_at: string;
 }
 
+export type ExecutionStatus = "pending" | "running" | "completed" | "failed";
+
 export interface ArcadeJob {
   job_id: string;
   task_text: string | null;
@@ -38,5 +40,8 @@ export interface ArcadeJob {
   output_text: string | null;
   output_files: string[] | null;
   output_metadata: OutputMetadata | null;
+  execution_status: ExecutionStatus;
+  execution_error: string | null;
+  execution_attempts: number;
   created_at: string;
 }
