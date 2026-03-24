@@ -1,5 +1,5 @@
 export const XCROW_ROUTER_ADDRESS =
-  "0x868da313070B2EBC9C4C5134245256200Abb65a7" as const;
+  "0x101B009942238f3F668963E36ba8fC13B32dF4bd" as const;
 
 export const USDC_ADDRESS =
   "0x3600000000000000000000000000000000000000" as const;
@@ -35,7 +35,7 @@ export const USDC_ABI = [
 ] as const;
 
 export const XCROW_ESCROW_ADDRESS =
-  "0x7b46c2e787814a814F198663Cb47Fc9a9991CB2B" as const;
+  "0xbc0E12F2895031913556689b99B17F1BB43F2Cb9" as const;
 
 export const XCROW_ESCROW_ABI = [
   // --- Read ---

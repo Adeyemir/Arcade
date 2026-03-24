@@ -256,7 +256,7 @@ export function useClientJobs(address: `0x${string}` | undefined) {
     if (showSpinner) setIsLoading(true);
     setError(null);
     try {
-      const DEPLOY_BLOCK = BigInt(33289270); // XcrowRouter deployment block (v3 — auto-start)
+      const DEPLOY_BLOCK = BigInt(33536142); // XcrowRouter deployment block (v4 — payout to owner)
       const CHUNK_SIZE = BigInt(9000);       // Arc testnet: 10k block limit per getLogs
       const latestBlock = await publicClient.getBlockNumber();
 

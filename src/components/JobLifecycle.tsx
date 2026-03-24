@@ -97,40 +97,23 @@ export function JobLifecycle({
           }
           console.log("[Xcrow] Supabase insert success for job", hire.jobId?.toString());
 
-          // Call the agent's HTTP endpoint to execute the task
+          // Trigger server-side agent execution via API route (avoids CORS)
           if (agentEndpoint) {
-            console.log("[Xcrow] Calling agent endpoint:", agentEndpoint);
+            console.log("[Xcrow] Triggering agent execution for job", hire.jobId?.toString());
             try {
-              const res = await fetch(agentEndpoint, {
+              const res = await fetch("/api/execute-agent", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  job_id: hire.jobId?.toString(),
-                  task_text: taskText,
-                  task_files: uploadedUrls.length > 0 ? uploadedUrls : null,
-                  task_type: taskType,
-                  client_address: address?.toLowerCase(),
-                  agent_address: agentWallet.toLowerCase(),
-                }),
+                body: JSON.stringify({ job_id: hire.jobId?.toString() }),
               });
+              const result = await res.json();
               if (res.ok) {
-                const result = await res.json();
-                console.log("[Xcrow] Agent endpoint response:", result);
-                // Save agent output to Supabase
-                const outputText = result.output_text || result.output || result.result || null;
-                const outputFiles = result.output_files || null;
-                if (outputText || outputFiles) {
-                  await supabase
-                    .from("jobs")
-                    .update({ output_text: outputText, output_files: outputFiles })
-                    .eq("job_id", hire.jobId?.toString());
-                  console.log("[Xcrow] Agent output saved to Supabase");
-                }
+                console.log("[Xcrow] Agent execution complete:", result);
               } else {
-                console.error("[Xcrow] Agent endpoint returned", res.status);
+                console.error("[Xcrow] Agent execution failed:", result);
               }
-            } catch (endpointErr) {
-              console.error("[Xcrow] Agent endpoint call failed:", endpointErr);
+            } catch (execErr) {
+              console.error("[Xcrow] Agent execution request failed:", execErr);
             }
           }
         });
