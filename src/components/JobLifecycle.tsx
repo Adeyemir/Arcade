@@ -23,6 +23,7 @@ interface JobLifecycleProps {
 }
 
 type Step = "idle" | "hiring" | "awaiting_completion" | "done";
+type ExecPhase = "queued" | "running" | "delivered" | "settling" | "settled" | "failed";
 
 const PINATA_JWT = process.env.NEXT_PUBLIC_PINATA_JWT!;
 
@@ -56,6 +57,7 @@ export function JobLifecycle({
   const [step, setStep] = useState<Step>("idle");
   const [jobId, setJobId] = useState<bigint | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [execPhase, setExecPhase] = useState<ExecPhase>("queued");
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Holds task data between tx confirmation and Supabase save
   const pendingTask = useRef<{
@@ -71,6 +73,35 @@ export function JobLifecycle({
 
   const hire = useHireAgent();
   const cancel = useCancelJob();
+
+  // Poll Supabase for execution progress while awaiting completion
+  useEffect(() => {
+    if (step !== "awaiting_completion" || jobId === null) return;
+    setExecPhase("queued");
+
+    const poll = setInterval(async () => {
+      const { data } = await supabase
+        .from("jobs")
+        .select("execution_status, output_text, output_files")
+        .eq("job_id", jobId.toString())
+        .single();
+      if (!data) return;
+
+      if (data.execution_status === "running" && !data.output_text) {
+        setExecPhase("running");
+      } else if (data.execution_status === "completed" && (data.output_text || data.output_files)) {
+        setExecPhase("settling");
+        // Check if on-chain status is settled
+        setTimeout(() => setExecPhase("settled"), 3000);
+        clearInterval(poll);
+      } else if (data.execution_status === "failed") {
+        setExecPhase("failed");
+        clearInterval(poll);
+      }
+    }, 2000);
+
+    return () => clearInterval(poll);
+  }, [step, jobId]);
 
   useEffect(() => {
     if (hire.jobId !== null && jobId === null) {
@@ -95,7 +126,7 @@ export function JobLifecycle({
           execution_attempts: 0,
         };
         console.log("[Xcrow] inserting job to Supabase", row);
-        supabase.from("jobs").insert(row).then(async ({ error }) => {
+        supabase.from("jobs").upsert(row, { onConflict: "job_id" }).then(async ({ error }) => {
           if (error) {
             console.error("[Xcrow] Supabase insert failed:", error);
             return;
@@ -325,19 +356,64 @@ export function JobLifecycle({
       )}
 
       {step === "awaiting_completion" && (
-        <div className="space-y-2">
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
-            Job created{jobId !== null ? ` (#${jobId.toString()})` : ""}. Task sent to agent — waiting for completion.
+        <div className="space-y-3">
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+            <p className="text-xs font-medium text-slate-700 mb-3">
+              Job #{jobId?.toString()} — Live Progress
+            </p>
+            <div className="space-y-2">
+              {[
+                { key: "queued", label: "Task queued" },
+                { key: "running", label: "Agent executing task" },
+                { key: "settling", label: "Delivering output & settling payment" },
+                { key: "settled", label: "Payment released" },
+              ].map(({ key, label }, i) => {
+                const phases: ExecPhase[] = ["queued", "running", "settling", "settled"];
+                const currentIdx = phases.indexOf(execPhase);
+                const stepIdx = phases.indexOf(key as ExecPhase);
+                const isDone = stepIdx < currentIdx;
+                const isActive = stepIdx === currentIdx;
+                const isFailed = execPhase === "failed" && stepIdx === currentIdx;
+
+                return (
+                  <div key={key} className="flex items-center gap-2.5">
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${
+                      isDone ? "bg-green-500 text-white" :
+                      isFailed ? "bg-red-500 text-white" :
+                      isActive ? "bg-blue-500 text-white animate-pulse" :
+                      "bg-slate-200 text-slate-400"
+                    }`}>
+                      {isDone ? "✓" : isFailed ? "!" : i + 1}
+                    </div>
+                    <span className={`text-xs ${
+                      isDone ? "text-green-700" :
+                      isFailed ? "text-red-600" :
+                      isActive ? "text-blue-700 font-medium" :
+                      "text-slate-400"
+                    }`}>
+                      {label}{isActive && !isFailed ? "…" : ""}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <Button
-            variant="outline"
-            className="w-full text-red-600 border-red-200 hover:bg-red-50"
-            onClick={handleCancel}
-            disabled={isBusy || jobId === null}
-          >
-            <XCircle className="mr-2 h-4 w-4" />
-            Cancel Job
-          </Button>
+          {execPhase !== "settled" && execPhase !== "settling" && (
+            <Button
+              variant="outline"
+              className="w-full text-red-600 border-red-200 hover:bg-red-50"
+              onClick={handleCancel}
+              disabled={isBusy || jobId === null}
+            >
+              <XCircle className="mr-2 h-4 w-4" />
+              Cancel Job &amp; Get Refund
+            </Button>
+          )}
+          {execPhase === "settled" && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700 text-center font-medium">
+              Done — check your dashboard for the full output
+            </div>
+          )}
         </div>
       )}
 

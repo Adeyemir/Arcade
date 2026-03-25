@@ -477,7 +477,7 @@ export default function ListAgentPage() {
                     name="minPriceUsdc"
                     value={formData.minPriceUsdc}
                     onChange={handleInputChange}
-                    placeholder="5"
+                    placeholder="0.10"
                     min="0.01"
                     step="0.01"
                     className="w-full px-4 py-3 text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"

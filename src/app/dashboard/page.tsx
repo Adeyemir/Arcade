@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
 import Link from "next/link";
-import { useAgentEarnings } from "@/lib/blockchain/hooks/useOwnerEarnings";
 import {
   Bot,
   DollarSign,
@@ -29,7 +28,6 @@ import {
 import { supabase, ArcadeJob } from "@/lib/supabase/client";
 import { AgentManageModal } from "@/components/AgentManageModal";
 import { DelistAgentModal } from "@/components/DelistAgentModal";
-import { SimpleBarChart } from "@/components/SimpleBarChart";
 
 /** Whether the job has any output ready */
 function hasOutput(job: ArcadeJob | null): boolean {
@@ -185,20 +183,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Analytics Chart - Show for agents tab */}
-        {activeTab === "agents" && ownedAgentIds?.length ? (
-          <div className="mb-6">
-            <SimpleBarChart
-              title="Agent Performance"
-              data={[
-                { label: "Total Agents", value: ownedAgentIds.length, color: "bg-gradient-to-r from-blue-500 to-blue-600" },
-                { label: "Listed Agents", value: 0, color: "bg-gradient-to-r from-emerald-500 to-emerald-600" },
-                { label: "Total Rentals", value: 0, color: "bg-gradient-to-r from-purple-500 to-purple-600" },
-              ]}
-            />
-          </div>
-        ) : null}
-
         {/* Content */}
         {activeTab === "agents" && (
           <MyAgentsSection ownedAgentIds={ownedAgentIds} />
@@ -301,9 +285,6 @@ function AgentCard({ agentId }: { agentId: number }) {
   const [showDelistModal, setShowDelistModal] = useState(false);
   const { data: agent, refetch, error } = useAgent(agentId);
 
-  // Get earnings for this specific agent
-  const { earnings: agentEarnings, rentalCount } = useAgentEarnings(agentId);
-
   // Error state
   if (error) {
     console.error(`Failed to load agent ${agentId}:`, error);
@@ -374,19 +355,6 @@ function AgentCard({ agentId }: { agentId: number }) {
             </p>
           </div>
 
-          {/* Agent Earnings */}
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2">
-              <p className="text-xs text-emerald-600 mb-1">Total Earnings</p>
-              <p className="text-lg font-bold text-emerald-900">
-                {parseFloat(agentEarnings).toFixed(4)} ARC
-              </p>
-            </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
-              <p className="text-xs text-blue-600 mb-1">Rentals</p>
-              <p className="text-lg font-bold text-blue-900">{rentalCount}</p>
-            </div>
-          </div>
         </div>
 
         {/* Right: Actions */}
@@ -776,7 +744,7 @@ function XcrowJobCard({
   const [showDisputeInput, setShowDisputeInput] = useState(false);
   const [arcadeJob, setArcadeJob] = useState<ArcadeJob | null>(null);
 
-  // Fetch task details from Supabase — poll every 5s until output arrives
+  // Fetch task details from Supabase — poll every 5s until output arrives, then refetch on-chain job
   useEffect(() => {
     const fetchJob = async () => {
       const { data } = await supabase
@@ -789,7 +757,6 @@ function XcrowJobCard({
 
     fetchJob();
 
-    // Keep polling while output is not yet available and job is not settled/cancelled
     const interval = setInterval(async () => {
       const { data } = await supabase
         .from("jobs")
@@ -798,8 +765,12 @@ function XcrowJobCard({
         .single();
       if (data) {
         setArcadeJob(data as ArcadeJob);
-        // Stop polling once output arrives
-        if (data.output_text || data.output_files) clearInterval(interval);
+        if (data.output_text || data.output_files) {
+          clearInterval(interval);
+          // Server settles after output — poll on-chain status to catch the update
+          const pollChain = setInterval(() => { refetchJob(); }, 3000);
+          setTimeout(() => clearInterval(pollChain), 30000); // stop after 30s
+        }
       }
     }, 5000);
 

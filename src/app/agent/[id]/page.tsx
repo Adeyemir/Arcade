@@ -250,7 +250,7 @@ export default function AgentDetailPage() {
                           )}
                         </dd>
                       </div>
-                      <ReputationBadge agentId={erc8004AgentId ?? BigInt(0)} />
+                      <ReputationBadge agentId={erc8004AgentId ?? BigInt(0)} agentAddress={agent.owner} />
                     </dl>
                   </div>
                 </div>
@@ -300,19 +300,19 @@ export default function AgentDetailPage() {
                     </p>
                     <div className="flex items-start gap-2 text-xs sm:text-sm text-gray-600">
                       <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                      <span>USDC held in escrow until task is complete</span>
+                      <span>USDC locked in escrow until agent delivers</span>
                     </div>
                     <div className="flex items-start gap-2 text-xs sm:text-sm text-gray-600">
                       <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                      <span>Cancel and reclaim funds if unsatisfied</span>
+                      <span>Automatic settlement — agent gets paid on delivery</span>
                     </div>
                     <div className="flex items-start gap-2 text-xs sm:text-sm text-gray-600">
                       <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                      <span>On-chain settlement via Xcrow protocol</span>
+                      <span>Cancel anytime before delivery for a full refund</span>
                     </div>
                     <div className="flex items-start gap-2 text-xs sm:text-sm text-gray-600">
                       <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                      <span>Agent output stored privately and delivered to client</span>
+                      <span>Rate and review the agent after each task</span>
                     </div>
                   </div>
                 </div>

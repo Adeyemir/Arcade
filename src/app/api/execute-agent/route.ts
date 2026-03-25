@@ -5,8 +5,6 @@ import { createPublicClient, createWalletClient, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { arc } from "@/lib/blockchain/arc";
 import {
-  XCROW_ROUTER_ABI,
-  XCROW_ROUTER_ADDRESS,
   XCROW_ESCROW_ABI,
   XCROW_ESCROW_ADDRESS,
 } from "@/lib/blockchain/contracts/XcrowRouter";
@@ -140,10 +138,31 @@ export async function POST(req: NextRequest) {
 
     console.log(`[execute-agent] Calling ${job.agent_endpoint} for job ${job_id} (attempt ${attempts})`);
 
+    // If task_text is empty but task_files has downloadable files, fetch their content
+    let taskText = job.task_text as string | null;
+    const taskFiles = job.task_files as string[] | null;
+    if (!taskText && taskFiles && taskFiles.length > 0) {
+      const binaryExts = /\.(png|jpg|jpeg|gif|webp|mp4|webm|mov|mp3|wav|ogg|zip|tar|gz|pdf)$/i;
+      for (const fileUrl of taskFiles) {
+        if (binaryExts.test(fileUrl)) continue; // skip binary files
+        try {
+          const fileRes = await fetch(fileUrl, { signal: AbortSignal.timeout(15_000) });
+          if (!fileRes.ok) continue;
+          const contentType = fileRes.headers.get("content-type") || "";
+          // Skip if response is HTML (gateway error page) or binary
+          if (contentType.includes("image/") || contentType.includes("video/") || contentType.includes("audio/")) continue;
+          const text = await fileRes.text();
+          // Skip if it looks like an HTML error page
+          if (text.trimStart().startsWith("<!DOCTYPE") || text.trimStart().startsWith("<html")) continue;
+          taskText = taskText ? `${taskText}\n\n${text}` : text;
+        } catch { /* skip unreachable files */ }
+      }
+    }
+
     const payload = JSON.stringify({
       job_id: job.job_id,
-      task_text: job.task_text,
-      task_files: job.task_files,
+      task_text: taskText,
+      task_files: taskFiles,
       task_type: job.task_type,
       client_address: job.client_address,
       agent_address: job.agent_address,
@@ -227,35 +246,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // --- Server-side auto-complete + settle ---
-    // Agent delivered output → complete the job → settle immediately
+    // --- Server-side auto-complete + settle (one atomic tx) ---
     let settleTxHash: string | undefined;
     try {
       const wallet = getWalletClient();
       const jobIdBigInt = BigInt(job_id);
 
-      // 1. Complete the job
-      console.log(`[execute-agent] Auto-completing job ${job_id}`);
-      const completeTx = await wallet.writeContract({
+      console.log(`[execute-agent] Auto-completing and settling job ${job_id}`);
+      const tx = await wallet.writeContract({
         address: XCROW_ESCROW_ADDRESS,
         abi: XCROW_ESCROW_ABI,
-        functionName: "completeJob",
+        functionName: "completeAndSettle",
         args: [jobIdBigInt],
       });
-      await publicClient.waitForTransactionReceipt({ hash: completeTx });
-      console.log(`[execute-agent] Job ${job_id} completed: ${completeTx}`);
-
-      // 2. Settle immediately (same chain, no hook data)
-      console.log(`[execute-agent] Auto-settling job ${job_id}`);
-      const settleTx = await wallet.writeContract({
-        address: XCROW_ROUTER_ADDRESS,
-        abi: XCROW_ROUTER_ABI,
-        functionName: "settleAndPay",
-        args: [jobIdBigInt, 0, "0x"],
-      });
-      await publicClient.waitForTransactionReceipt({ hash: settleTx });
-      settleTxHash = settleTx;
-      console.log(`[execute-agent] Job ${job_id} settled: ${settleTx}`);
+      await publicClient.waitForTransactionReceipt({ hash: tx });
+      settleTxHash = tx;
+      console.log(`[execute-agent] Job ${job_id} settled: ${tx}`);
     } catch (settleErr: any) {
       // Non-fatal — output was saved, settlement can be retried manually
       console.error(`[execute-agent] Auto-settle failed for job ${job_id}:`, settleErr?.shortMessage || settleErr?.message);

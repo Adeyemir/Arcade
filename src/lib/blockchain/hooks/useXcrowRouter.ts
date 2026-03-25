@@ -4,6 +4,7 @@ import {
   useWaitForTransactionReceipt,
   useSignTypedData,
   usePublicClient,
+  useAccount,
 } from "wagmi";
 import { useEffect, useState } from "react";
 import { parseUnits, keccak256, encodePacked, parseEventLogs, parseSignature } from "viem";
@@ -266,7 +267,7 @@ export function useClientJobs(address: `0x${string}` | undefined) {
     if (showSpinner) setIsLoading(true);
     setError(null);
     try {
-      const DEPLOY_BLOCK = BigInt(33536142); // XcrowRouter deployment block (v4 — payout to owner)
+      const DEPLOY_BLOCK = BigInt(33670294); // XcrowRouter deployment block (v5 — completeAndSettle)
       const CHUNK_SIZE = BigInt(9000);       // Arc testnet: 10k block limit per getLogs
       const latestBlock = await publicClient.getBlockNumber();
 
@@ -317,7 +318,7 @@ export function useClientJobs(address: `0x${string}` | undefined) {
 
   useEffect(() => {
     fetch(true); // show spinner on first load only
-    const interval = setInterval(() => fetch(false), 10000); // silent re-scan every 10s
+    const interval = setInterval(() => fetch(false), 30000); // silent re-scan every 30s
     return () => clearInterval(interval);
   }, [address, publicClient]);
 
@@ -335,7 +336,7 @@ export function useAgentJobs(wallet: `0x${string}` | undefined) {
     functionName: "getAgentWalletJobs",
     args: wallet ? [wallet] : undefined,
     chainId: arc.id,
-    query: { enabled: !!wallet, staleTime: 0, refetchInterval: 5000 },
+    query: { enabled: !!wallet, staleTime: 0, refetchInterval: 30000 },
   });
   return { jobIds: (data as bigint[] | undefined) ?? [], isLoading, error, refetch };
 }
@@ -351,7 +352,7 @@ export function useJob(jobId: bigint | null) {
     functionName: "getJob",
     args: jobId !== null ? [jobId] : undefined,
     chainId: arc.id,
-    query: { enabled: jobId !== null, staleTime: 0, refetchInterval: 5000 },
+    query: { enabled: jobId !== null, staleTime: 0, refetchInterval: 30000 },
   });
   return { job: data as Job | undefined, isLoading, error, refetch };
 }
@@ -642,9 +643,74 @@ export function useAgentXcrowEarnings(wallet: `0x${string}` | undefined) {
     };
 
     fetch();
-    const interval = setInterval(fetch, 15000);
+    const interval = setInterval(fetch, 60000);
     return () => clearInterval(interval);
   }, [wallet, publicClient]);
+
+  return { totalUsdc, jobCount, isLoading };
+}
+
+/** Fetch Xcrow earnings for a specific agent by its wallet address */
+export function useAgentXcrowEarningsById(_agentId: number) {
+  // We use the owner wallet approach since Arcade Registry IDs don't match ERC-8004 IDs
+  // The agent card passes Arcade IDs but we need to look up by wallet
+  const publicClient = usePublicClient({ chainId: arc.id });
+  const { address } = useAccount();
+  const [totalUsdc, setTotalUsdc] = useState<number>(0);
+  const [jobCount, setJobCount] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!address || !publicClient) return;
+
+    const fetchEarnings = async () => {
+      try {
+        const jobIds = await publicClient.readContract({
+          address: XCROW_ESCROW_ADDRESS,
+          abi: XCROW_ESCROW_ABI,
+          functionName: "getAgentWalletJobs",
+          args: [address],
+        }) as bigint[];
+
+        if (!jobIds || jobIds.length === 0) {
+          setTotalUsdc(0);
+          setJobCount(0);
+          setIsLoading(false);
+          return;
+        }
+
+        const jobs = await Promise.all(
+          jobIds.map((id) =>
+            publicClient.readContract({
+              address: XCROW_ESCROW_ADDRESS,
+              abi: XCROW_ESCROW_ABI,
+              functionName: "getJob",
+              args: [id],
+            })
+          )
+        );
+
+        let total = BigInt(0);
+        let settled = 0;
+        for (const job of jobs as any[]) {
+          if (job.status === 4) {
+            total += BigInt(job.amount) - BigInt(job.platformFee);
+            settled++;
+          }
+        }
+        setTotalUsdc(Number(total) / 1e6);
+        setJobCount(settled);
+      } catch {
+        // silent
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchEarnings();
+    const interval = setInterval(fetchEarnings, 60000);
+    return () => clearInterval(interval);
+  }, [address, publicClient]);
 
   return { totalUsdc, jobCount, isLoading };
 }
