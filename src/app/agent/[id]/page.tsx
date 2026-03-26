@@ -22,22 +22,44 @@ export default function AgentDetailPage() {
   const [agentEndpoint, setAgentEndpoint] = useState<string | null>(null);
   const [supportedInputTypes, setSupportedInputTypes] = useState<string[]>(["text"]);
   const [minPriceUsdc, setMinPriceUsdc] = useState<string | null>(null);
+  const [metadataLoaded, setMetadataLoaded] = useState(false);
+  const [metadataError, setMetadataError] = useState(false);
 
   const { data: agent, isLoading, error } = useAgent(parseInt(agentId));
 
   // Fetch IPFS metadata to get the real ERC-8004 agentId, endpoint, and min price
+  // Tries multiple gateways with retry to handle unreliable IPFS
   useEffect(() => {
     const metadataHash = (agent as any)?.metadataHash;
     if (!metadataHash || !metadataHash.startsWith("https://")) return;
-    fetch(metadataHash)
-      .then((r) => r.json())
-      .then((meta) => {
-        if (meta?.erc8004AgentId) setErc8004AgentId(BigInt(meta.erc8004AgentId));
-        if (meta?.apiEndpoint) setAgentEndpoint(meta.apiEndpoint);
-        if (Array.isArray(meta?.input_types)) setSupportedInputTypes(meta.input_types);
-        if (meta?.min_price_usdc) setMinPriceUsdc(meta.min_price_usdc);
-      })
-      .catch(() => {});
+
+    const gateways = [
+      metadataHash,
+      metadataHash.replace("https://ipfs.io/ipfs/", "https://gateway.pinata.cloud/ipfs/"),
+      metadataHash.replace("https://ipfs.io/ipfs/", "https://cloudflare-ipfs.com/ipfs/"),
+    ];
+
+    let cancelled = false;
+    (async () => {
+      for (const url of gateways) {
+        if (cancelled) return;
+        try {
+          const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+          if (!res.ok) continue;
+          const meta = await res.json();
+          if (cancelled) return;
+          if (meta?.erc8004AgentId) setErc8004AgentId(BigInt(meta.erc8004AgentId));
+          if (meta?.apiEndpoint) setAgentEndpoint(meta.apiEndpoint);
+          if (Array.isArray(meta?.input_types)) setSupportedInputTypes(meta.input_types);
+          if (meta?.min_price_usdc) setMinPriceUsdc(meta.min_price_usdc);
+          setMetadataLoaded(true);
+          return;
+        } catch { /* try next gateway */ }
+      }
+      if (!cancelled) setMetadataError(true);
+    })();
+
+    return () => { cancelled = true; };
   }, [(agent as any)?.metadataHash]);
 
   const { tasksCompleted, activeRentals, isLoading: metricsLoading } = useAgentMetrics(
@@ -284,6 +306,17 @@ export default function AgentDetailPage() {
                   )}
 
                   {/* Job Lifecycle */}
+                  {metadataError && !erc8004AgentId && (
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800">
+                      Failed to load agent metadata. Please refresh the page and try again.
+                    </div>
+                  )}
+                  {!metadataLoaded && !metadataError && (agent as any)?.metadataHash && (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-slate-600"></div>
+                      Loading agent details...
+                    </div>
+                  )}
                   <JobLifecycle
                     agentWallet={agent.owner as `0x${string}`}
                     taskDescription={agent.description || `Task for agent #${agentId}`}

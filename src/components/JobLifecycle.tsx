@@ -182,6 +182,10 @@ export function JobLifecycle({
 
   const handleHire = async () => {
     if (!address) return;
+    if (!erc8004AgentId || erc8004AgentId === BigInt(0)) {
+      setErr("Agent metadata is still loading. Please wait a moment and try again.");
+      return;
+    }
     if (!taskText.trim() && taskFiles.length === 0) {
       setErr("Describe what you need the agent to do.");
       return;
