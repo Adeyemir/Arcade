@@ -317,6 +317,11 @@ export default function AgentDetailPage() {
                       Loading agent details...
                     </div>
                   )}
+                  {metadataLoaded && !agentEndpoint && (
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800">
+                      This agent has no endpoint configured and cannot accept tasks yet.
+                    </div>
+                  )}
                   <JobLifecycle
                     agentWallet={agent.owner as `0x${string}`}
                     taskDescription={agent.description || `Task for agent #${agentId}`}

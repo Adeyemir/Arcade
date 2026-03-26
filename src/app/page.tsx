@@ -26,6 +26,7 @@ export default function Home() {
   const [page, setPage] = useState(0);
   const [allAgents, setAllAgents] = useState<any[]>([]);
   const [hasMoreAgents, setHasMoreAgents] = useState(true);
+  const [isFiltering, setIsFiltering] = useState(false);
 
   // Get total agent count
   const { data: agentCount } = useReadContract({
@@ -55,35 +56,82 @@ export default function Home() {
     },
   });
 
-  // Process and append new agents when data loads
-  useEffect(() => {
-    if (isSuccess && paginatedAgents) {
+  // Try fetching IPFS metadata from multiple gateways
+  const fetchMeta = async (url: string): Promise<Record<string, any> | null> => {
+    const gateways = [
+      url,
+      url.replace("https://ipfs.io/ipfs/", "https://gateway.pinata.cloud/ipfs/"),
+      url.replace("https://ipfs.io/ipfs/", "https://cloudflare-ipfs.com/ipfs/"),
+    ];
+    for (const gw of gateways) {
+      try {
+        const res = await fetch(gw, { signal: AbortSignal.timeout(8_000) });
+        if (res.ok) return await res.json();
+      } catch {}
+    }
+    return null;
+  };
 
-      const agents = (paginatedAgents as Agent[])
-        .filter((agent) => agent.isListed && agent.owner !== "0x0000000000000000000000000000000000000000")
-        .map((agent) => ({
-          agentId: Number(agent.agentId),
-          title: agent.name || `Agent #${agent.agentId}`,
-          description: agent.description || "No description available",
-          category: agent.category,
-          owner: agent.owner,
-          isListed: agent.isListed,
-          imageUrl: agent.imageUrl,
-        }));
+  // Process agents: load from chain, then filter by IPFS metadata (must have endpoint)
+  useEffect(() => {
+    if (!isSuccess || !paginatedAgents) return;
+
+    const listed = (paginatedAgents as Agent[])
+      .filter((a) => a.isListed && a.owner !== "0x0000000000000000000000000000000000000000");
+
+    if (listed.length === 0) {
+      if (page === 0) setAllAgents([]);
+      return;
+    }
+
+    let cancelled = false;
+    setIsFiltering(true);
+
+    (async () => {
+      const verified: typeof allAgents = [];
+
+      await Promise.all(
+        listed.map(async (agent) => {
+          const url = agent.metadataHash;
+          // If no IPFS metadata URL, skip this agent
+          if (!url || !url.startsWith("https://")) return;
+
+          const meta = await fetchMeta(url);
+          if (cancelled) return;
+
+          // Only show agents that have an apiEndpoint
+          if (meta?.apiEndpoint) {
+            verified.push({
+              agentId: Number(agent.agentId),
+              title: agent.name || `Agent #${agent.agentId}`,
+              description: agent.description || "No description available",
+              category: agent.category,
+              owner: agent.owner,
+              isListed: agent.isListed,
+              imageUrl: agent.imageUrl,
+            });
+          }
+        })
+      );
+
+      if (cancelled) return;
+
+      // Sort newest first
+      verified.sort((a, b) => b.agentId - a.agentId);
 
       if (page === 0) {
-        // First page - replace all agents
-        setAllAgents(agents);
+        setAllAgents(verified);
       } else {
-        // Subsequent pages - append to existing agents
-        setAllAgents((prev) => [...prev, ...agents]);
+        setAllAgents((prev) => [...prev, ...verified]);
       }
 
-      // Check if there are more agents to load
       const totalAgents = agentCount ? Number(agentCount) : 0;
       const loadedCount = (page + 1) * AGENTS_PER_PAGE;
       setHasMoreAgents(loadedCount < totalAgents);
-    }
+      setIsFiltering(false);
+    })();
+
+    return () => { cancelled = true; };
   }, [isSuccess, paginatedAgents, page, agentCount]);
 
   const handleLoadMore = () => {
@@ -92,17 +140,14 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      {isLoading && page === 0 ? (
+      {(isLoading || isFiltering) && page === 0 && allAgents.length === 0 ? (
         <div className="container max-w-7xl mx-auto px-4 py-8">
           <div className="text-center py-20">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             <p className="mt-4 text-slate-600">Loading marketplace...</p>
-            <p className="mt-2 text-xs text-slate-500">
-              Contract: {ARCADE_REGISTRY_ADDRESS}
-            </p>
           </div>
         </div>
-      ) : allAgents.length === 0 && !isLoading ? (
+      ) : allAgents.length === 0 && !isLoading && !isFiltering ? (
         <div className="container max-w-7xl mx-auto px-4 py-8">
           <div className="text-center py-20">
             <div className="inline-flex items-center justify-center w-20 h-20 bg-slate-100 rounded-full mb-6">
