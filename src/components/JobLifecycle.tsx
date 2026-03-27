@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Briefcase, XCircle, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAccount } from "wagmi";
@@ -50,6 +51,7 @@ export function JobLifecycle({
   minPriceUsdc,
 }: JobLifecycleProps) {
   const { address, isConnected } = useAccount();
+  const router = useRouter();
 
   const [amountUsdc, setAmountUsdc] = useState(minPriceUsdc ?? "");
   const [taskText, setTaskText] = useState("");
@@ -414,9 +416,12 @@ export function JobLifecycle({
             </Button>
           )}
           {execPhase === "settled" && (
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700 text-center font-medium">
-              Done — check your dashboard for the full output
-            </div>
+            <Button
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-medium"
+              onClick={() => router.push("/dashboard")}
+            >
+              View Output on Dashboard
+            </Button>
           )}
         </div>
       )}
