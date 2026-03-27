@@ -517,7 +517,7 @@ export default function ListAgentPage() {
                 />
                 <p className="mt-1 text-xs text-slate-500">
                   HTTPS endpoint where Arcade sends tasks to your agent.{" "}
-                  <a href="/build" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                  <a href="/for-builders" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                     How should my endpoint work?
                   </a>
                 </p>
