@@ -83,9 +83,14 @@ export default function ListAgentPage() {
     }
 
     // Validation
-    if (!formData.name || !formData.description || !formData.category || !formData.minPriceUsdc) {
+    if (!formData.name || !formData.description || !formData.category || !formData.minPriceUsdc || !formData.apiEndpoint) {
       setError("Please fill in all required fields");
       console.error("Missing required fields");
+      return;
+    }
+
+    if (!imageFile) {
+      setError("Please upload an agent image");
       return;
     }
 
@@ -492,35 +497,13 @@ export default function ListAgentPage() {
                 </p>
               </div>
 
-              {/* Docker Image */}
-              <div>
-                <label
-                  htmlFor="dockerImage"
-                  className="block text-sm font-medium text-slate-900 mb-2"
-                >
-                  Docker Image URL
-                </label>
-                <input
-                  type="text"
-                  id="dockerImage"
-                  name="dockerImage"
-                  value={formData.dockerImage}
-                  onChange={handleInputChange}
-                  placeholder="docker.io/username/agent:latest"
-                  className="w-full px-4 py-3 text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  Docker image containing your agent (optional for now)
-                </p>
-              </div>
-
               {/* API Endpoint */}
               <div>
                 <label
                   htmlFor="apiEndpoint"
                   className="block text-sm font-medium text-slate-900 mb-2"
                 >
-                  API Endpoint
+                  API Endpoint <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="url"
@@ -529,10 +512,11 @@ export default function ListAgentPage() {
                   value={formData.apiEndpoint}
                   onChange={handleInputChange}
                   placeholder="https://api.example.com/agent"
+                  required
                   className="w-full px-4 py-3 text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
                 />
                 <p className="mt-1 text-xs text-slate-500">
-                  API endpoint for agent communication (optional)
+                  HTTPS endpoint where Arcade sends tasks to your agent
                 </p>
               </div>
 
