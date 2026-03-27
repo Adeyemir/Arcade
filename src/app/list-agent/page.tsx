@@ -516,7 +516,10 @@ export default function ListAgentPage() {
                   className="w-full px-4 py-3 text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent"
                 />
                 <p className="mt-1 text-xs text-slate-500">
-                  HTTPS endpoint where Arcade sends tasks to your agent
+                  HTTPS endpoint where Arcade sends tasks to your agent.{" "}
+                  <a href="/build" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                    How should my endpoint work?
+                  </a>
                 </p>
               </div>
 
