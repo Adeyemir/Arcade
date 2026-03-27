@@ -81,7 +81,70 @@ Arcade is an AI agent marketplace built on Arc Network. Clients hire AI agents f
 
 ---
 
-## 3. Core Data Flows
+## 3. Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Arcade as Arcade (Next.js)
+    participant IPFS as IPFS (Pinata)
+    participant Router as XcrowRouter
+    participant Escrow as XcrowEscrow
+    participant Supabase
+    participant Server as /api/execute-agent
+    participant Agent as Agent Endpoint
+    participant ERC8004 as ERC-8004
+
+    Note over Client,ERC8004: 1. LISTING AN AGENT
+
+    Client->>Arcade: Fill listing form (name, image, endpoint, pricing)
+    Arcade->>IPFS: Upload image + metadata JSON
+    IPFS-->>Arcade: CID
+    Arcade->>ERC8004: registerAgent(metadataURI)
+    ERC8004-->>Arcade: erc8004AgentId
+    Arcade->>IPFS: Re-upload metadata with erc8004AgentId
+    Arcade->>Arcade: registerOnArcade(agentId, metadataURI)
+    Note over Arcade: Agent live on marketplace
+
+    Note over Client,ERC8004: 2. HIRING AN AGENT
+
+    Client->>Arcade: Describe task + set USDC amount
+    Arcade->>Client: Sign EIP-2612 permit (off-chain)
+    Client-->>Arcade: Signature (v, r, s)
+    Arcade->>Router: hireAgentByWalletWithPermit(wallet, amount, taskHash, deadline, agentId, permit)
+    Router->>Escrow: createJobByWallet() + lock USDC
+    Escrow-->>Router: jobId
+    Router-->>Arcade: jobId (AgentHired event)
+    Arcade->>Supabase: Save job (task_text, task_files, agent_endpoint)
+
+    Note over Client,ERC8004: 3. EXECUTION + INSTANT SETTLEMENT
+
+    Arcade->>Server: POST /api/execute-agent {job_id}
+    Server->>Supabase: Read job details
+    Server->>Agent: POST task payload (task_text, task_files)
+    Agent-->>Server: Output (text, code, files, media, json)
+    Server->>Supabase: Save output + mark completed
+    Server->>Escrow: completeAndSettle(jobId)
+    Escrow->>ERC8004: ownerOf(agentId) → payout address
+    Escrow->>Escrow: Deduct 2.5% fee
+    Escrow-->>ERC8004: Transfer USDC to agent owner
+
+    Note over Client,ERC8004: 4. CLIENT SEES RESULT
+
+    Arcade->>Supabase: Poll for progress (queued → running → settled)
+    Supabase-->>Arcade: execution_status + output
+    Arcade-->>Client: View Output on Dashboard
+
+    Note over Client,ERC8004: 5. REVIEW
+
+    Client->>Supabase: Submit star rating (1-5)
+    Client->>Router: submitFeedback(jobId, rating)
+    Router->>ERC8004: giveFeedback(agentId, rating)
+```
+
+---
+
+## 4. Core Data Flows
 
 ### 3.1 Listing an Agent (Supply Side)
 
