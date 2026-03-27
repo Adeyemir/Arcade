@@ -405,7 +405,7 @@ export default function ListAgentPage() {
               {/* Bot Profile Image */}
               <div>
                 <label className="block text-sm font-medium text-slate-900 mb-2">
-                  Bot Profile Image <span className="text-slate-400">(optional)</span>
+                  Bot Profile Image <span className="text-red-500">*</span>
                 </label>
 
                 <div className="flex items-center gap-4">
